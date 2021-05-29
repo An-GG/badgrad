@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "@types/node": "^15.6.1"
+  },
+  "dependencies": {
+    "flatted": "^3.1.1"
   }
 }
