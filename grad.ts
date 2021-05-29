@@ -36,7 +36,7 @@ for (let layerNk in K_LAYERS) {
             // Add links to prev layer
             for (let prev_node of net[layerN-1]) {
                 let newlink:link = {
-                    weight: 1,
+                    weight: Math.random(),
                     in: prev_node,
                     out: n
                 }
@@ -125,6 +125,7 @@ async function train() {
         setlayer(set[chosen].i, net, 0);
         calcnet(net);
         console.log(net_toStr(net));
+        net_logerr(net, set[chosen].o)
     }
 
 }
@@ -177,6 +178,17 @@ function tweak(net:net, target:number[]) {
         }
         currentDiff = next_layer_helpfulness;
     }
+}
+
+function net_logerr(net:net, target:number[]) {
+    let o = [];
+    for (let i=0;i<net[net.length-1].length; i++) {
+        o.push(target[i]-net[net.length-1][i].value);
+    }
+    console.log(o);
+    let s = 0;
+    for (let ob of o) { s+=Math.pow(ob, 2) }
+    console.log(Math.sqrt(s));
 }
 
 function setlayer(v:number[], net:net, layerN:number) {
