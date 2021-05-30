@@ -83,7 +83,6 @@ function calc_net(net:Net, input?:LayerValues):number[] {
 
     let lN = 0;
     for (let layer of net.layers) {
-        let nN = 0;
         for (let node of layer.nodes) {
             if (node.input_layer_weights == undefined) { continue; }
             
@@ -96,7 +95,6 @@ function calc_net(net:Net, input?:LayerValues):number[] {
             }
             
             node.value = net.activation_fn( linkSum + node.bias );
-            nN++;   
         }
         lN++;
     }
