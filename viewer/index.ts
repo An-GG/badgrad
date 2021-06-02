@@ -19,84 +19,16 @@ type Net = {
 }
 
 
-let net:Net = {
-    activation_fn: (a)=>1,
-    derivative_activation_fn: (a)=>0,
-    layers: [
-        {
-            nodes: [
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
+let net:Net;
 
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
 
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-            ]
-        },
 
-        {
-            nodes: [
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-            ]
-        },
-
-        
-        {
-            nodes: [
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-
-                {
-                    bias: 1,
-                    input_layer_weights: [],
-                    value: 1
-                },
-            ]
-        },
-    ],
-    nodes_per_layer: [4,2,2,4]
+function sigmoid(x:number):number {
+    return (1 / (1 + Math.pow(Math.E, -x)));
 }
 
-
-setupCanvasContext(draw);
-
-function draw(c:CanvasRenderingContext2D) {
+function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
+    
     let layerN = 0;
     for (let layer of net.layers) {
         let nodeN = 0;
@@ -104,17 +36,53 @@ function draw(c:CanvasRenderingContext2D) {
             console.log(nodeN);
             c.strokeStyle = "#ffffff";
             c.lineWidth = 3;
-            c.beginPath();
+            
             let layerSpacing = (window.innerWidth) / (1 + net.layers.length);
             let nodeSpacing = (window.innerHeight) / (1 + layer.nodes.length);
             let rad = 25;
-            c.ellipse((1+layerN)*layerSpacing, (1+nodeN) * nodeSpacing, 25, 25, 0, 0, 2*Math.PI);
-            c.stroke();
+            let point = {
+                x: (1+layerN) * layerSpacing,
+                y: (1+nodeN) * nodeSpacing
+            }
+            if (mode == "NODE_ONLY") {
+                c.beginPath();
+                c.fillStyle = "#000000";
+                c.ellipse(point.x, point.y, 25, 25, 0, 0, 2*Math.PI);
+                c.fill();
+                c.stroke();
+            }
+
+            
+            if (node.input_layer_weights && node.input_layer_weights.length > 0 && mode == "LINE_ONLY") {
+                let wN = 0;
+                let weightSpacing = (window.innerHeight) / (1 + node.input_layer_weights.length);
+                for (let w of node.input_layer_weights) {
+                    let prevpoint = {
+                        x: layerN * layerSpacing,
+                        y: (1+wN) * weightSpacing
+                    }
+                    c.beginPath();
+                    c.strokeStyle = "#ffffff";
+                    c.lineWidth = Math.abs((sigmoid(w)) - 0.5) * 10;
+                    console.log(sigmoid(w));
+                    c.moveTo(point.x, point.y);
+                    c.lineTo(prevpoint.x, prevpoint.y);
+                    c.stroke();
+                    wN++;
+                }
+            }
             nodeN++;
         }
         layerN++;
     }
 
+}
+
+
+
+function draw(c:CanvasRenderingContext2D) {
+    drawNet(c, "LINE_ONLY");
+    drawNet(c, "NODE_ONLY");
 }
 
 function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
@@ -129,4 +97,29 @@ function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
     window.addEventListener('resize', onResize);
     onResize();
 }
+
+function loadJSON(ref:string, cb:(response:string)=>any) {
+    let xobj = new XMLHttpRequest();
+    xobj.overrideMimeType("application/json");
+    xobj.open('GET', ref, true);
+    xobj.onreadystatechange = function() {
+        if (xobj.readyState == 4 && xobj.status == 200) {
+            cb(xobj.responseText);
+        }
+    }
+    xobj.send(null);
+}
+
+
+
+
+
+
+
+loadJSON('net.json', (r) => {
+    net = JSON.parse(r);
+    setupCanvasContext(draw);
+});
+
+
 

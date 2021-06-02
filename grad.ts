@@ -1,6 +1,7 @@
 import { MnistReader } from "./interface";
 import * as readline from "readline";
 import { SIGWINCH } from "constants";
+import fs from 'fs';
 
 export type Node = {
     value: number
@@ -55,7 +56,10 @@ function new_net(cfg:NetConfig, param_init_function:(inputs:ParameterInitialzerI
             }
             newlayer.push(newnode);
         }
-        out.layers[layerN].nodes = newlayer;
+        out.layers.push({
+            nodes: newlayer
+        });
+
         layerN++;
     } 
     return out;
@@ -104,10 +108,122 @@ function calc_net(net:Net, input?:LayerValues):number[] {
 
 
 
+function train_net(net:Net, trainingData: { inputLayer: Layer, outputLayer: Layer }[]) {
+
+    
+}
+
+type NodeNudge = {
+    biasNudge:number, 
+    weightNudges:number[]
+}
+
+type LayerNudge = {
+    prevLayerPDs:number[],
+    nodeNudges:NodeNudge[]
+}
+
+function backprop_net(net: Net, target_output: number[]) {
+    let netnudges: LayerNudge[] = [];
+    let currentPDs: number[] = [];
+
+    let nodeN = 0;
+    for (let n of net.layers[net.layers.length-1].nodes) {
+       currentPDs.push( 2 * (target_output[nodeN] - n.value));
+       nodeN++;
+    }
+
+    for (let lN = net.layers.length - 1; lN > 0; lN--) {
+        let nudge = get_layer_PDs(net.layers[lN], net.layers[lN-1], currentPDs, net);
+        netnudges.push(nudge);
+        currentPDs = nudge.prevLayerPDs;
+    }
+
+    netnudges.reverse();
+}
+
+function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net): LayerNudge {
+    let out:LayerNudge = {
+        prevLayerPDs:[],
+        nodeNudges:[]
+    }
+    let prevLayerPDTotals:number[][] = []
+    for (let n of prev.nodes) { prevLayerPDTotals.push([]); } 
+
+    let nodeN = 0;
+    for (let node of layer.nodes) {
+        let nodeNudge: NodeNudge = {
+            biasNudge: thislayerPDs[nodeN],
+            weightNudges:[]
+        }
+        
+        let wN = 0;
+        if (node.input_layer_weights) {
+            for (let w of node.input_layer_weights) {
+                
+                // Weight Partial Derivative = 
+                // (InputNode Value) * (DerivativeActivation(CurrentValue)) * PDCurrentValue
+                
+                let wPD = prev.nodes[wN].value * thislayerPDs[nodeN] * net.derivative_activation_fn(node.value);
+                // The relu derivative will work bc we're lucky, but need to fix TODO
+                // node.value is output of activation_fn(), cannot plug into derivative_fn
+
+                let prevValuePD = w * thislayerPDs[nodeN] * net.derivative_activation_fn(node.value);
+
+                nodeNudge.weightNudges.push(wPD);
+                prevLayerPDTotals[wN].push(prevValuePD);
+                wN++;
+            }
+        }
+        out.nodeNudges.push(nodeNudge);
+        nodeN++;
+    }
+
+    for (let pdarr of prevLayerPDTotals) {
+        let sum = 0;
+        for (let a of pdarr) {
+            sum+=a;
+        }
+        out.prevLayerPDs.push( sum / pdarr.length );
+    }
+
+    return out;
+}
 
 
 
 
+
+function save_net(net:Net) {
+    let save_obj = {
+        layers:net.layers
+    }
+    fs.writeFileSync("viewer/net.json", JSON.stringify(save_obj));
+}
+
+
+
+
+
+function relu(x:number):number {
+    if (x > 0) { return x; }
+    return 0;
+}
+function derivative_relu(x:number):0|1 {
+    if (x > 0) { return 1; }
+    return 0;
+}
+
+
+
+
+let newnet = new_net({
+    activation_fn: relu,
+    derivative_activation_fn: derivative_relu,
+    nodes_per_layer: [7, 4, 4, 3]
+}, (i)=>{ return Math.random(); });
+
+save_net(newnet);
 
 
 
