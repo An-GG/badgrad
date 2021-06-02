@@ -1,8 +1,25 @@
 import { MnistReader } from "./interface";
 import * as readline from "readline";
 import { SIGWINCH } from "constants";
-import { Net, Layer, Node, LayerValues }  from './net';
 
+export type Node = {
+    value: number
+    bias: number
+    input_layer_weights?: number[] //first layer wont have obv
+}
+
+export type Layer = {
+    nodes: Node[]
+}
+
+export type LayerValues = Node['value'][];
+
+export type Net = {
+    layers: Layer[],
+    nodes_per_layer: number[],
+    activation_fn: (i:number) => number,
+    derivative_activation_fn: (i:number) => number
+}
 
 
 type NetConfig = Omit<Net, 'layers'>

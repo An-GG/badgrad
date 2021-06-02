@@ -1,11 +1,2 @@
 {
-    "compilerOptions": {
-        "lib": ["DOM","ES6", "ES5"],
-        "allowJs": true,
-        "module": "ESNext",
-        "strict": true,
-        "target": "ES5",
-        "sourceMap": true,
-        "downlevelIteration": true
-    }
 }
