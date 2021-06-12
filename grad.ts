@@ -20,7 +20,8 @@ export type Net = {
     layers: Layer[],
     nodes_per_layer: number[],
     activation_fn: (i:number) => number,
-    derivative_activation_fn: (i:number) => number
+    derivative_activation_fn: (i:number) => number,
+    training_metadata?:any
 }
 
 
@@ -159,7 +160,7 @@ function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
 
 type TrainingDataBatch = { inputLayer: LayerValues, outputLayer: LayerValues }[];
 
-function train_net(net:Net, trainingData: TrainingDataBatch):Net {
+function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_metadata:{ error:number  } }  {
     let average_nudge: NetNudge = [];
     // setup nudge to be same as net structure
     let layerN = 0; 
@@ -213,7 +214,18 @@ function train_net(net:Net, trainingData: TrainingDataBatch):Net {
 
     let avg = average_summed_nudge(average_nudge, trainingIteration);    
 
-    return nudge_network(net, avg, 0.05);
+    // calc error
+    let sumerr = 0;
+    for (let n of avg[avg.length - 1].nodeNudges) {
+        sumerr += n.biasNudge*n.biasNudge; 
+    }
+    let err = Math.sqrt(sumerr);
+
+    let out:Net = nudge_network(net, avg, 0.05);
+    out.training_metadata = {
+        error: err
+    }
+    return out as any;
 }
 
 
@@ -409,25 +421,30 @@ async function TRAIN_MNIST() {
     let lblreader = await MnistReader.getReader("TRAINING", "LABELS");
 
     let total_iterations = 1000;
-    let batch_size = 15;
+    let batch_size = 60;
 
     let label = lblreader.next();
     let img = imgreader.next();
 
-    //console.log( calc_net(mnist_net, img) );
     save_net(mnist_net, "0");        
+    
 
     for (let i = 1; i < total_iterations; i++) {
         let batch: TrainingDataBatch = [];        
-        console.log("Iteration: "+i.toString());
+
+        let npass = 0;
+        let nfail = 0;
+
         for (let b = 0; b < batch_size; b++) {
-            console.log("    Batch: "+b);
 
             label = lblreader.next();
             img = imgreader.next();
 
             let result = calc_net(mnist_net, img);
             save_net(mnist_net, i.toString());        
+            
+            let chosen = maxIndex(result);
+            if (chosen == label) { npass++; } else { nfail++; }
 
             let outlayer = [0,0,0,0,0,0,0,0,0,0];
             outlayer[label] = 1;
@@ -439,7 +456,7 @@ async function TRAIN_MNIST() {
             
         }
         mnist_net = train_net(mnist_net, batch);
-
+        console.log("Iteration: "+i.toString() + " " + (npass/(npass+nfail)) + " " + mnist_net.training_metadata.error);
     }
 
 }
