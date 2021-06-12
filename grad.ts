@@ -7,7 +7,7 @@ import { MnistReader } from "./interface";
 export type Node = {
     value: number
     bias: number
-    input_layer_weights?: number[] //first layer wont have obv
+    input_layer_weights: number[] //first layer wont have obv
 }
 
 export type Layer = {
@@ -21,7 +21,7 @@ export type Net = {
     nodes_per_layer: number[],
     activation_fn: (i:number) => number,
     derivative_activation_fn: (i:number) => number,
-    training_metadata?:any
+    training_metadata?:TrainingMetadata
 }
 
 
@@ -48,9 +48,9 @@ function new_net(cfg:NetConfig, param_init_function:(inputs:ParameterInitialzerI
             let newnode:Node = {
                 bias: param_init_function({ paramType:"NodeBias", layerN:layerN, nodeN:nodeN, net:out }),
                 value: param_init_function({ paramType:"NodeValue", layerN:layerN, nodeN:nodeN, net:out }),
+                input_layer_weights: []
             }
             if (layerN > 0) { 
-                newnode.input_layer_weights = [];
                 for (let weightN = 0; weightN < cfg.nodes_per_layer[layerN - 1]; weightN++) {
                     newnode.input_layer_weights.push(
                         param_init_function({ paramType:"Weight", layerN:layerN, nodeN:nodeN, weightN:weightN, net:out })                                
@@ -85,7 +85,61 @@ function get_net_layer_vals(net:Net, layerN:number):LayerValues {
     return out;
 }
 
-function calc_net(net:Net, input:LayerValues):number[] {
+function get_net_copy(net:Net):Net {
+    return {
+        activation_fn: net.activation_fn,
+        derivative_activation_fn: net.derivative_activation_fn,
+        layers: JSON.parse(JSON.stringify(net.layers)),
+        nodes_per_layer: JSON.parse(JSON.stringify(net.layers)),
+        training_metadata: JSON.parse(JSON.stringify(net.training_metadata))
+    }
+}
+
+
+// TODO assumes input is non-negative ?? or does it work for neg?
+function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] {
+    
+    // NodeValue = avn_fn( NodeBias + (for each PNode in PrevLayer: PNode_k.value * Weight_k  /  #_of_Weights) )
+    
+    let isolated_net = get_net_copy(net);
+
+    // Calc First Layer Vals
+    for (let nodeN = 0; nodeN < isolated_net.layers[0].nodes.length; nodeN++) {
+        let val = net.activation_fn( isolated_net.layers[0].nodes[nodeN].bias + input[nodeN] );
+        isolated_net.layers[0].nodes[nodeN].value = val;
+    } 
+
+    // Calculate Everything Else
+    let layerN = 0;
+    for (let layer of isolated_net.layers) {
+        
+        // Skip first layer
+        if (layerN == 0) { layerN++; continue; }
+        let prevLayer = isolated_net.layers[layerN - 1];
+
+        let nodeN = 0;
+        for (let node of layer.nodes) {
+            
+            // Sum weight/node from prev layer 
+            let weightedSum = 0;
+
+            let wN = 0;
+            for (let w of node.input_layer_weights) {
+                weightedSum += (w * prevLayer.nodes[wN].value) / prevLayer.nodes.length;    
+                wN++;
+            }
+
+            isolated_net.layers[layerN].nodes[nodeN].value = net.activation_fn( node.bias + weightedSum ); 
+            nodeN++;
+        }
+        layerN++;
+    }
+
+    if (modifyOriginal) { net.layers = isolated_net.layers; }    
+    return get_net_layer_vals(isolated_net, isolated_net.layers.length - 1);
+}
+
+function calc(net:Net, input:LayerValues):number[] {
     if (input) { set_net_input(net, input); }
 
     let lN = 0;
@@ -163,7 +217,35 @@ function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
 
 type TrainingDataBatch = { inputLayer: LayerValues, outputLayer: LayerValues }[];
 
-function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_metadata:{ error:number  } }  {
+type TrainingMetadata = {
+    error: number,
+}
+
+
+
+
+
+function train(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
+
+    // Nudges are all just summed and divided at end
+    let nudge: NetNudge = [];
+
+    for (let training_pair of training_data) {
+        
+        // Strategy
+        //
+        //
+
+        
+
+    } 
+    
+
+    return {}  as any;
+}
+
+
+function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
     let average_nudge: NetNudge = [];
     // setup nudge to be same as net structure
     let layerN = 0; 
@@ -191,6 +273,7 @@ function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_me
     }
    
     // sum the nudges from each training iteration, avg
+    let sumerr = 0;
 
     let trainingIteration = 0;    
     for (let d of trainingData) {
@@ -216,9 +299,6 @@ function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_me
     }
 
     let avg = average_summed_nudge(average_nudge, trainingIteration);    
-
-    // calc error
-    let sumerr = 0;
     for (let n of avg[avg.length - 1].nodeNudges) {
         sumerr += n.biasNudge*n.biasNudge; 
     }
@@ -226,7 +306,7 @@ function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_me
 
     let out:Net = nudge_network(net, avg, 0.05);
     out.training_metadata = {
-        error: err
+        error: err,
     }
     return out as any;
 }
@@ -328,8 +408,10 @@ function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net):
 
 function save_net(net:Net, name:string) {
     let save_obj = {
-        layers:net.layers
+        layers:net.layers,
+        training_metadata: net.training_metadata    
     }
+    
     fs.writeFileSync("viewer/netfile"+name+".json", JSON.stringify(save_obj));
 }
 
@@ -441,15 +523,13 @@ async function TRAIN_MNIST() {
 
         let npass = 0;
         let nfail = 0;
-
+    
         for (let b = 0; b < batch_size; b++) {
 
             label = lblreader.next();
             img = imgreader.next();
 
             let result = calc_net(mnist_net, img);
-            save_net(mnist_net, i.toString());        
-            
             let chosen = maxIndex(result);
             if (chosen == label) { npass++; } else { nfail++; }
 
@@ -463,6 +543,8 @@ async function TRAIN_MNIST() {
             
         }
         mnist_net = train_net(mnist_net, batch);
+        save_net(mnist_net, i.toString());        
+        console.log((mnist_net));
         console.log("Iteration: "+i.toString() + " " + (npass/(npass+nfail)) + " " + mnist_net.training_metadata.error);
     }
 

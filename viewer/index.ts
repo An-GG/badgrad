@@ -15,7 +15,10 @@ type Net = {
     layers: Layer[],
     nodes_per_layer: number[],
     activation_fn: (i:number) => number,
-    derivative_activation_fn: (i:number) => number
+    derivative_activation_fn: (i:number) => number,
+    training_metadata: {
+        error: number
+    }
 }
 
 
@@ -195,6 +198,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
     c.font = '30px Arial';
     if (chosen_ans != -1) {
         c.fillText(chosen_ans.toString(), 20, 250);
+        c.fillText(net.training_metadata.error.toString(), 20, 300);
     }
 }
 

@@ -4,5 +4,6 @@ node_modules
 
 **/*.swp
 
+archive
 
 viewer/netfile*.json
