@@ -146,6 +146,7 @@ function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
         }
         layerN++;
     }
+    console.log(JSON.stringify(nudge, null, 2));
     return modded_net
 }
 
@@ -206,7 +207,7 @@ function train_net(net:Net, trainingData: { inputLayer: LayerValues, outputLayer
 
     let avg = average_summed_nudge(average_nudge, trainingIteration);    
 
-    return nudge_network(net, avg, 0.05);
+    return nudge_network(net, avg, 0.005);
 }
 
 
@@ -328,33 +329,31 @@ let newnet = new_net({
     nodes_per_layer: [7, 4, 4, 3]
 }, (i)=>{ return Math.random(); });
 
-save_net(newnet, "net");
+save_net(newnet, "1");
 
-console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
-
-newnet = train_net(newnet, [{
-    inputLayer: [1,0,0,0,0,0,0],
-    outputLayer: [0,1,0]
-}]);
-
-save_net(newnet, "modded");
-
-
-console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
-
-
-newnet = train_net(newnet, [{
-    inputLayer: [1,0,0,0,0,0,0],
-    outputLayer: [0,1,0]
-}]);
-
-save_net(newnet, "net");
+let training = [
+        {
+            inputLayer: [1,0,0,0,0,0,0],
+            outputLayer: [0,1,0]
+        },
+        {
+            inputLayer: [0,0,0,0,0,0,1],
+            outputLayer: [2,0,-2]
+        }
+]
 
 
 console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
 
+for (let i = 2; i < 5; i++) {
 
+    newnet = train_net(newnet, training);
 
+    console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
+    
+    save_net(newnet, i.toString());
+
+}
 
 
 

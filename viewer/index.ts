@@ -114,9 +114,13 @@ function loadJSON(ref:string, cb:(response:string)=>any) {
 
 
 
+let netfile_name = 'net.json';
+let urlparams = new URLSearchParams(window.location.search);
+if (urlparams.has('netfile')) {
+    netfile_name = urlparams.get('netfile') + '.json';
+}
 
-
-loadJSON('net.json', (r) => {
+loadJSON(netfile_name, (r) => {
     net = JSON.parse(r);
     setupCanvasContext(draw);
 });
