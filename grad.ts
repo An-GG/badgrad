@@ -2,6 +2,7 @@
 import * as readline from "readline";
 import { SIGWINCH } from "constants";
 import fs from 'fs';
+import { MnistReader } from "./interface";
 
 export type Node = {
     value: number
@@ -24,6 +25,7 @@ export type Net = {
 
 
 type NetConfig = Omit<Net, 'layers'>
+type FromNetfileConfig = Omit<NetConfig, 'nodes_per_layer'>
 
 type ParameterInitialzerInputs = 
     { paramType: "NodeValue", layerN:number, nodeN:number, net:Net } |
@@ -155,8 +157,9 @@ function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
 
 
 
+type TrainingDataBatch = { inputLayer: LayerValues, outputLayer: LayerValues }[];
 
-function train_net(net:Net, trainingData: { inputLayer: LayerValues, outputLayer: LayerValues }[]):Net {
+function train_net(net:Net, trainingData: TrainingDataBatch):Net {
     let average_nudge: NetNudge = [];
     // setup nudge to be same as net structure
     let layerN = 0; 
@@ -324,40 +327,124 @@ function derivative_relu(x:number):0|1 {
     return 0;
 }
 
-
-
-let newnet = new_net({
-    activation_fn: relu,
-    derivative_activation_fn: derivative_relu,
-    nodes_per_layer: [7, 4, 4, 3]
-}, (i)=>{ return (Math.random() - 0.5); });
-
-
-let training = [
-        {
-            inputLayer: [1,0,0,0,0,0,0],
-            outputLayer: [0,1,0]
-        },
-        {
-            inputLayer: [0,0,0,0,0,0,5],
-           outputLayer: [2,0,0]
-        }
-];
-
-calc_net(newnet, training[1].inputLayer);
-save_net(newnet, "1");
-
-
-for (let i = 2; i < 1000; i++) {
-    newnet = train_net(newnet, training);
-    
-    console.log(calc_net(newnet, training[1].inputLayer));
-
-    if (i == 999) { calc_net(newnet, training[0].inputLayer); }
-
-    save_net(newnet, i.toString());
+function net_from_netfile(filename:string, cfg:FromNetfileConfig):Net {
+    let layers:Layer[] = JSON.parse(fs.readFileSync("viewer/netfile"+filename+".json").toString());
+    let nodenums = [];
+    for (let l of layers) {
+        nodenums.push(l.nodes.length);
+    }
+    return {
+        activation_fn: cfg.activation_fn,
+        derivative_activation_fn: cfg.derivative_activation_fn,
+        layers: layers,
+        nodes_per_layer: nodenums
+    }
 }
 
+
+function maxIndex(arr:number[]):number {
+    let i = 0;
+    let max = -1;
+    let ind = -1;
+    for (let x of arr) {
+        if (x > max) {
+            max = x;
+            ind = i;
+        }
+        i++
+    }
+    return ind;
+}
+
+function TRAIN_TEST() {
+    
+    let newnet = new_net({
+        activation_fn: relu,
+        derivative_activation_fn: derivative_relu,
+        nodes_per_layer: [784, 32, 10, 3]
+    }, (i)=>{ return (Math.random() - 0.5); });
+
+
+    let training = [
+            {
+                inputLayer: [1,0,0,0,0,0,0],
+                outputLayer: [0,1,0]
+            },
+            {
+                inputLayer: [0,0,0,0,0,0,5],
+               outputLayer: [2,0,0]
+            }
+    ];
+
+    calc_net(newnet, training[1].inputLayer);
+    save_net(newnet, "1");
+
+
+    for (let i = 2; i < 1000; i++) {
+        newnet = train_net(newnet, training);
+        
+        console.log(calc_net(newnet, training[1].inputLayer));
+
+        if (i == 999) { calc_net(newnet, training[0].inputLayer); }
+
+        save_net(newnet, i.toString());
+
+
+    }
+
+}
+
+
+
+
+async function TRAIN_MNIST() {
+    
+    let mnist_net = new_net({
+        activation_fn: relu,
+        derivative_activation_fn: derivative_relu,
+        nodes_per_layer: [784, 32, 10],
+    }, (i)=>{ return (Math.random() - 0.5); });
+
+    let imgreader = await MnistReader.getReader("TRAINING", "IMAGES");
+    let lblreader = await MnistReader.getReader("TRAINING", "LABELS");
+
+    let total_iterations = 1000;
+    let batch_size = 15;
+
+    let label = lblreader.next();
+    let img = imgreader.next();
+
+    //console.log( calc_net(mnist_net, img) );
+    save_net(mnist_net, "0");        
+
+    for (let i = 1; i < total_iterations; i++) {
+        let batch: TrainingDataBatch = [];        
+        console.log("Iteration: "+i.toString());
+        for (let b = 0; b < batch_size; b++) {
+            console.log("    Batch: "+b);
+
+            label = lblreader.next();
+            img = imgreader.next();
+
+            let result = calc_net(mnist_net, img);
+            save_net(mnist_net, i.toString());        
+
+            let outlayer = [0,0,0,0,0,0,0,0,0,0];
+            outlayer[label] = 1;
+                    
+            batch.push({
+                inputLayer: img,
+                outputLayer: outlayer
+            });
+            
+        }
+        mnist_net = train_net(mnist_net, batch);
+
+    }
+
+}
+
+TRAIN_MNIST();
 
 // TODO Output can currently only be positive due to relu, 
 //
