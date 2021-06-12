@@ -93,7 +93,7 @@ function get_net_copy(net:Net):Net {
         derivative_activation_fn: net.derivative_activation_fn,
         layers: JSON.parse(JSON.stringify(net.layers)),
         nodes_per_layer: JSON.parse(JSON.stringify(net.layers)),
-        training_metadata: JSON.parse(JSON.stringify(net.training_metadata))
+        training_metadata: net.training_metadata ? JSON.parse(JSON.stringify(net.training_metadata)) : undefined
     }
 }
 
@@ -141,50 +141,6 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
 
     if (modifyOriginal) { net.layers = isolated_net.layers; }    
     return get_net_layer_vals(isolated_net, isolated_net.layers.length - 1);
-}
-
-
-function average_summed_nudge(nudge: NetNudge, n:number):NetNudge {
-    let average_nudge:NetNudge = JSON.parse(JSON.stringify(nudge));    
-    let layerN = 0;
-    for (let layer of average_nudge) {
-        let nodeN = 0;
-        for (let l_node of layer.nodeNudges) {
-            l_node.biasNudge = l_node.biasNudge / n;
-            let wN = 0;
-            for (let weight of l_node.weightNudges) {
-               l_node.weightNudges[wN] = weight / n;
-               wN++;
-            }
-            nodeN++;
-        }
-        layerN++;
-    }
-    return average_nudge;
-}
-
-
-function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
-    let modded_net:Net = net;
-    modded_net.layers = JSON.parse(JSON.stringify(net.layers));
-    let layerN = 0;
-    for (let layer of nudge) {
-        let nodeN = 0;
-        for (let l_node of layer.nodeNudges) {
-            modded_net.layers[layerN].nodes[nodeN].bias += (l_node.biasNudge * scalar);
-            let wN = 0;
-            let weights = modded_net.layers[layerN].nodes[nodeN].input_layer_weights;
-            if (weights) {    
-                for (let weight of l_node.weightNudges) {
-                    weights[wN] += l_node.weightNudges[wN] * scalar;
-                    wN++;
-                }
-            }
-            nodeN++;
-        }
-        layerN++;
-    }
-    return modded_net
 }
 
 function apply_gradient(net:Net, grad:NetGradient, learnRate:number):Net {
@@ -272,11 +228,13 @@ function average_grads(grads:NetGradient[]):NetGradient {
     return avg;
 }
 
-function train(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
+function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
 
     let isolated_net:Net = get_net_copy(net);
 
     let calculated_grads: NetGradient[] = [];
+    let sum_scalar_error = 0;
+
 
     for (let training_pair of training_data) {
         
@@ -300,12 +258,13 @@ function train(net:Net, training_data: TrainingDataBatch):Net & { training_metad
             net_grad[currentLayerN][nodeN].nodePD = 2 * diff;
         }
         scalar_error = Math.sqrt(scalar_error);
-
+        sum_scalar_error += scalar_error;
         
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
             
             // For each node in layer, calc NodeGradient
+
             for (let nodeN = 0; nodeN < isolated_net.layers[currentLayerN].nodes.length; nodeN++) {
                 let node = isolated_net.layers[currentLayerN].nodes[nodeN];
                 let node_grad = net_grad[currentLayerN][nodeN];
@@ -345,180 +304,21 @@ function train(net:Net, training_data: TrainingDataBatch):Net & { training_metad
                                 * node_grad.nodePD;
                     node_grad.weightsPD[wN] = wgrad;
                 }
-
-                currentLayerN--;
-
             }
+            currentLayerN--;
         }
         calculated_grads.push(net_grad);
     }
 
+    let avg_error = sum_scalar_error / training_data.length;
+
     let avg = average_grads(calculated_grads);
-    
-
-    return {}  as any;
+    let applied_grad_net = apply_gradient(net, avg, 0.2) as Net & { training_metadata:TrainingMetadata };    
+    applied_grad_net.training_metadata = {
+        error: avg_error
+    } 
+    return applied_grad_net;
 }
-
-
-function train_net(net:Net, trainingData: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
-    let average_nudge: NetNudge = [];
-    // setup nudge to be same as net structure
-    let layerN = 0; 
-    for (let num_nodes of net.nodes_per_layer) {
-        // we can ignore prevLayerPDs because we only need it during backprop
-        // TODO: make it optional
-        let layernudge: LayerNudge = {
-            prevLayerPDs: [],
-            nodeNudges: []
-        }
-        for (let i = 0; i < num_nodes; i++) {
-            let nodenudge: NodeNudge = {
-                biasNudge: 0,
-                weightNudges: []
-            }    
-            if (layerN > 0) {
-                for (let j = 0; j < net.nodes_per_layer[layerN-1]; j++) {
-                    nodenudge.weightNudges.push(0);
-                }
-            }
-            layernudge.nodeNudges.push(nodenudge);
-        }
-        average_nudge.push(layernudge);
-        layerN++;
-    }
-   
-    // sum the nudges from each training iteration, avg
-    let sumerr = 0;
-
-    let trainingIteration = 0;    
-    for (let d of trainingData) {
-        calc_net(net, d.inputLayer);
-        let netnudge = backprop_net(net, d.outputLayer);
-        
-
-        let layerN = 0;
-        for (let layer of average_nudge) {
-            let nodeN = 0;
-            for (let l_node of layer.nodeNudges) {
-                l_node.biasNudge += netnudge[layerN].nodeNudges[nodeN].biasNudge;
-                let wN = 0;
-                for (let weight of l_node.weightNudges) {
-                    l_node.weightNudges[wN] += netnudge[layerN].nodeNudges[nodeN].weightNudges[wN];
-                    wN++;
-                }
-                nodeN++;
-            }
-            layerN++;
-        }
-        trainingIteration++;
-    }
-
-    let avg = average_summed_nudge(average_nudge, trainingIteration);    
-    for (let n of avg[avg.length - 1].nodeNudges) {
-        sumerr += n.biasNudge*n.biasNudge; 
-    }
-    let err = Math.sqrt(sumerr);
-
-    let out:Net = nudge_network(net, avg, 0.05);
-    out.training_metadata = {
-        error: err,
-    }
-    return out as any;
-}
-
-
-
-type NodeNudge = {
-    biasNudge:number, 
-    weightNudges:number[]
-};
-
-type LayerNudge = {
-    prevLayerPDs:number[],
-    nodeNudges:NodeNudge[]
-};
-
-type NetNudge = LayerNudge[];
-
-function backprop_net(net: Net, target_output: number[]): LayerNudge[] {
-    let netnudges: LayerNudge[] = [];
-    let currentPDs: number[] = [];
-
-    let nodeN = 0;
-    for (let n of net.layers[net.layers.length-1].nodes) {
-       currentPDs.push( 2 * (target_output[nodeN] - n.value));
-       nodeN++;
-    }
-
-    // all but first layer
-    for (let lN = net.layers.length - 1; lN > 0; lN--) {
-        let nudge = get_layer_PDs(net.layers[lN], net.layers[lN-1], currentPDs, net);
-        netnudges.push(nudge);
-        currentPDs = nudge.prevLayerPDs;
-    }
-
-    // final (first / input) layer
-    netnudges.push(get_layer_PDs(net.layers[0], { nodes:[] }, currentPDs, net));
-
-    netnudges.reverse();
-    return netnudges;
-}
-
-function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net): LayerNudge {
-    let out:LayerNudge = {
-        prevLayerPDs:[],
-        nodeNudges:[]
-    }
-    let prevLayerPDTotals:number[][] = []
-    for (let n of prev.nodes) { prevLayerPDTotals.push([]); } 
-
-    let nodeN = 0;
-    for (let node of layer.nodes) {
-        let nodeNudge: NodeNudge = {
-            biasNudge: thislayerPDs[nodeN],
-            weightNudges:[]
-        }
-        
-        let wN = 0;
-        if (node.input_layer_weights) {
-            for (let w of node.input_layer_weights) {
-                
-                // Weight Partial Derivative = 
-                // (InputNode Value) * (DerivativeActivation(CurrentValue)) * PDCurrentValue
-                
-                let wPD = prev.nodes[wN].value * thislayerPDs[nodeN] * net.derivative_activation_fn(node.value);
-                // The relu derivative will work bc we're lucky, but need to fix TODO
-                // node.value is output of activation_fn(), cannot plug into derivative_fn
-
-                // weight partial derivative is divided by num nodes in calculation, so the gradient must be as well
-                let nWeights = node.input_layer_weights.length;
-                wPD = nWeights == 0 ? 0 : wPD / nWeights;
-
-                let prevValuePD = w * thislayerPDs[nodeN] * net.derivative_activation_fn(node.value);
-
-                nodeNudge.weightNudges.push(wPD);
-                prevLayerPDTotals[wN].push(prevValuePD);
-                wN++;
-
-            }
-        }
-        out.nodeNudges.push(nodeNudge);
-        nodeN++;
-    }
-
-    for (let pdarr of prevLayerPDTotals) {
-        let sum = 0;
-        for (let a of pdarr) {
-            sum+=a;
-        }
-        out.prevLayerPDs.push( sum / pdarr.length );
-    }
-    
-    return out;
-}
-
-
-
 
 
 function save_net(net:Net, name:string) {
@@ -577,7 +377,7 @@ function TRAIN_TEST() {
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: [784, 32, 10, 3]
+        nodes_per_layer: [10, 5, 7, 3]
     }, (i)=>{ return (Math.random() - 0.5); });
 
 
@@ -592,16 +392,17 @@ function TRAIN_TEST() {
             }
     ];
 
-    calc_net(newnet, training[1].inputLayer);
+    calc_net(newnet, training[1].inputLayer, true);
     save_net(newnet, "1");
 
 
     for (let i = 2; i < 1000; i++) {
         newnet = train_net(newnet, training);
         
-        console.log(calc_net(newnet, training[1].inputLayer));
+        console.log(i+"   "+(newnet.training_metadata as any).error);
 
-        if (i == 999) { calc_net(newnet, training[0].inputLayer); }
+        calc_net(newnet, training[1].inputLayer, true);
+        if (i == 999) { calc_net(newnet, training[0].inputLayer, true); }
 
         save_net(newnet, i.toString());
 
@@ -659,13 +460,12 @@ async function TRAIN_MNIST() {
         }
         mnist_net = train_net(mnist_net, batch);
         save_net(mnist_net, i.toString());        
-        console.log((mnist_net));
         console.log("Iteration: "+i.toString() + " " + (mnist_net as any).training_metadata.error) + " " + (npass/(npass+nfail));
     }
 
 }
 
-TRAIN_MNIST();
+TRAIN_TEST();
 
 // TODO Output can currently only be positive due to relu, 
 //
