@@ -32,8 +32,15 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
     let layerN = 0;
     for (let layer of net.layers) {
         let nodeN = 0;
+
+        let maxbias = 1;
+        let maxval = 1;
+        for (let n of layer.nodes) {
+            //if (Math.abs(n.bias) > maxbias) { maxbias = Math.abs(n.bias) };
+            //if (Math.abs(n.value) > maxval) { maxval = Math.abs(n.value) };
+        } 
+
         for (let node of layer.nodes) {
-            console.log(nodeN);
             c.strokeStyle = "#ffffff";
             c.lineWidth = 3;
             
@@ -45,8 +52,32 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                 y: (1+nodeN) * nodeSpacing
             }
             if (mode == "NODE_ONLY") {
+
+
+                c.lineWidth = 3;
                 c.beginPath();
-                c.fillStyle = "#000000";
+                let nodebias_rel = Math.round(Math.abs(node.bias*255)); //parseInt((sigmoid(Math.abs(node.bias) / maxbias)*255).toString());
+                let nodeval_rel = Math.round(Math.abs(node.value*255));// parseInt((sigmoid(Math.abs(node.value) / maxval)*255).toString());
+                
+                if (nodebias_rel > 255) { nodebias_rel = 255; }
+                if (nodeval_rel > 255) { nodeval_rel = 255; }
+
+                console.log("===========");
+                console.log(nodeval_rel);
+                if (node.bias > 0) {
+                    c.strokeStyle = "#0000"+(nodebias_rel.toString(16).padStart(2,"0"))
+                } else {
+                    c.strokeStyle = "#"+(nodebias_rel.toString(16).padStart(2,"0")) + "0000";
+                }
+
+                if (node.value > 0) {
+                    c.fillStyle = "#0000"+(nodeval_rel.toString(16).padStart(2,"0"));
+                } else {
+                    c.fillStyle = "#"+(nodeval_rel.toString(16).padStart(2,"0")) + "0000";
+                }
+
+                console.log(node);
+                console.log(c.fillStyle);
                 c.ellipse(point.x, point.y, 25, 25, 0, 0, 2*Math.PI);
                 c.fill();
                 c.stroke();
@@ -54,6 +85,14 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
             
             if (node.input_layer_weights && node.input_layer_weights.length > 0 && mode == "LINE_ONLY") {
+                let maxweight = 0;
+                for (let w of node.input_layer_weights) {
+                    if (Math.abs(w) > maxweight) {
+                        maxweight = Math.abs(w);
+                    }
+                }
+
+
                 let wN = 0;
                 let weightSpacing = (window.innerHeight) / (1 + node.input_layer_weights.length);
                 for (let w of node.input_layer_weights) {
@@ -62,9 +101,14 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                         y: (1+wN) * weightSpacing
                     }
                     c.beginPath();
-                    c.strokeStyle = "#ffffff";
+
+                    let weightval_rel = Math.round((w / maxweight) * 255);
+                    if (w > 0) {
+                        c.strokeStyle = "#0000"+weightval_rel.toString(16).padStart(2,"0");
+                    } else {
+                        c.strokeStyle = "#"+weightval_rel.toString(16).padStart(2,"0")+"0000";
+                    }
                     c.lineWidth = Math.abs((sigmoid(w)) - 0.5) * 10;
-                    console.log(sigmoid(w));
                     c.moveTo(point.x, point.y);
                     c.lineTo(prevpoint.x, prevpoint.y);
                     c.stroke();

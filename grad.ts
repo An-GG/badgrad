@@ -82,23 +82,27 @@ function get_net_layer_vals(net:Net, layerN:number):LayerValues {
     return out;
 }
 
-function calc_net(net:Net, input?:LayerValues):number[] {
+function calc_net(net:Net, input:LayerValues):number[] {
     if (input) { set_net_input(net, input); }
 
     let lN = 0;
     for (let layer of net.layers) {
+        let nodeN = 0;
         for (let node of layer.nodes) {
             let linkSum = 0;
-            
             if (node.input_layer_weights != undefined) {
                 let linkN = 0;
                 for (let w of node.input_layer_weights) {
                     linkSum+=(w * net.layers[lN-1].nodes[linkN].value);
                     linkN++;
                 }
+            } else {
+                node.value += node.bias;
+                continue;
             }
             
             node.value = net.activation_fn( linkSum + node.bias );
+            nodeN++;
         }
         lN++;
     }
@@ -146,7 +150,6 @@ function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
         }
         layerN++;
     }
-    console.log(JSON.stringify(nudge, null, 2));
     return modded_net
 }
 
@@ -207,7 +210,7 @@ function train_net(net:Net, trainingData: { inputLayer: LayerValues, outputLayer
 
     let avg = average_summed_nudge(average_nudge, trainingIteration);    
 
-    return nudge_network(net, avg, 0.005);
+    return nudge_network(net, avg, 0.05);
 }
 
 
@@ -305,7 +308,7 @@ function save_net(net:Net, name:string) {
     let save_obj = {
         layers:net.layers
     }
-    fs.writeFileSync("viewer/"+name+".json", JSON.stringify(save_obj));
+    fs.writeFileSync("viewer/netfile"+name+".json", JSON.stringify(save_obj));
 }
 
 
@@ -327,9 +330,8 @@ let newnet = new_net({
     activation_fn: relu,
     derivative_activation_fn: derivative_relu,
     nodes_per_layer: [7, 4, 4, 3]
-}, (i)=>{ return Math.random(); });
+}, (i)=>{ return (Math.random() - 0.5); });
 
-save_net(newnet, "1");
 
 let training = [
         {
@@ -337,23 +339,37 @@ let training = [
             outputLayer: [0,1,0]
         },
         {
-            inputLayer: [0,0,0,0,0,0,1],
-            outputLayer: [2,0,-2]
+            inputLayer: [0,0,0,0,0,0,5],
+           outputLayer: [2,0,0]
         }
-]
+];
+
+calc_net(newnet, training[1].inputLayer);
+save_net(newnet, "1");
 
 
-console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
-
-for (let i = 2; i < 5; i++) {
-
+for (let i = 2; i < 1000; i++) {
     newnet = train_net(newnet, training);
-
-    console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
     
-    save_net(newnet, i.toString());
+    console.log(calc_net(newnet, training[1].inputLayer));
 
+    if (i == 999) { calc_net(newnet, training[0].inputLayer); }
+
+    save_net(newnet, i.toString());
 }
 
 
-
+// TODO Output can currently only be positive due to relu, 
+//
+//  - you could normalize the training data & make negatives positive, and then make the values which are supposed to be negative
+//      - this is bad because you loose information
+//
+//  i think you can do either of the following and i think all are equivalent in effectiveness (but maybe not?)
+//  - you can add offset to all training data output to make everything positive, maintaining linear difference between values
+//      - idk this sounds annoying, using unsigned ints it should work fine though
+//  - you can have whether or not a value is negative be a seperate node (this is like if net was digital, same as sticking binary val into nodes if int is signed)
+//      - an extra node is kinda alot (but since its only output layer maybe not that big of a deal?)
+//  - you can make the final layer of the net have the activation function y=x
+//      - instead of this, i thought abt using final (non-networked) multiplier, like a node with a single previous layer node that does not go through activationfn
+//          - this wont work, this is same as making values positive and negating later because net is forced to set multiplier to smth negative
+//      - instead, this is basically just a final linear transformation that still has access to all the net's information and the fact that a value is negative can be backpropigated
