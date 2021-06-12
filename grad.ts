@@ -1,4 +1,4 @@
-import { MnistReader } from "./interface";
+
 import * as readline from "readline";
 import { SIGWINCH } from "constants";
 import fs from 'fs';
