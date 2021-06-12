@@ -187,6 +187,26 @@ function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
     return modded_net
 }
 
+function apply_gradient(net:Net, grad:NetGradient, learnRate:number):Net {
+    let isolated_net = get_net_copy(net);
+    
+    let ln = 0;
+    for (let layer of isolated_net.layers) {
+        let nn = 0;
+        for (let node of layer.nodes) {
+            node.bias += grad[ln][nn].biasPD * learnRate;
+            let wn = 0;
+            for (let w of node.input_layer_weights) {
+                node.input_layer_weights[wn] += grad[ln][nn].weightsPD[wn] * learnRate;
+                wn++;
+            }
+            nn++;
+        }
+        ln++;
+    }
+
+    return isolated_net;
+}
 
 
 type TrainingDataBatch = { inputLayer: LayerValues, outputLayer: LayerValues }[];
