@@ -93,8 +93,8 @@ function calc_net(net:Net, input:LayerValues):number[] {
         let nodeN = 0;
         for (let node of layer.nodes) {
             let linkSum = 0;
+            let linkN = 0;
             if (node.input_layer_weights != undefined) {
-                let linkN = 0;
                 for (let w of node.input_layer_weights) {
                     linkSum+=(w * net.layers[lN-1].nodes[linkN].value);
                     linkN++;
@@ -104,6 +104,9 @@ function calc_net(net:Net, input:LayerValues):number[] {
                 continue;
             }
             
+            // contribution needs to be inversely proportional to # of weights, otherwise PD will be unfairly higher
+            linkSum = linkSum / linkN; 
+
             node.value = net.activation_fn( linkSum + node.bias );
             nodeN++;
         }
@@ -291,6 +294,10 @@ function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net):
                 let wPD = prev.nodes[wN].value * thislayerPDs[nodeN] * net.derivative_activation_fn(node.value);
                 // The relu derivative will work bc we're lucky, but need to fix TODO
                 // node.value is output of activation_fn(), cannot plug into derivative_fn
+
+                // weight partial derivative is divided by num nodes in calculation, so the gradient must be as well
+                let nWeights = node.input_layer_weights.length;
+                wPD = nWeights == 0 ? 0 : wPD / nWeights;
 
                 let prevValuePD = w * thislayerPDs[nodeN] * net.derivative_activation_fn(node.value);
 

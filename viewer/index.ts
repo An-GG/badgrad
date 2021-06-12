@@ -27,6 +27,29 @@ function sigmoid(x:number):number {
     return (1 / (1 + Math.pow(Math.E, -x)));
 }
 
+function drawImage(ops: {
+    image: number[],
+    xPixels: number,
+    pos: { x: number, y: number, width: number },
+    ctx: CanvasRenderingContext2D
+}) {
+
+    let yPixels = ops.image.length / ops.xPixels;
+    let pixleWidth = ops.pos.width / ops.xPixels;
+
+    for (let y = 0; y < yPixels; y++) {
+        for (let x = 0; x < ops.xPixels; x++) {
+            let n = ( y * ops.xPixels ) + x;
+            let pos = {x: ops.pos.x + (pixleWidth * x), y: ops.pos.y + (pixleWidth * y)};
+
+            let w = ops.image[n];
+            ops.ctx.fillStyle = "rgb("+w+","+w+","+w+")";
+            ops.ctx.fillRect(pos.x, pos.y, pixleWidth, pixleWidth);
+        }
+    }
+
+}
+
 function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
 
@@ -36,7 +59,9 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
     c.fillText(netfile_name, 20, 50);
 
     let possiblePointSizes: number[] = [];
-    
+    let firstLayerVals = [];
+
+
     let layerN = 0;
     for (let layer of net.layers) {
         let nodeN = 0;
@@ -88,6 +113,13 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                 c.ellipse(point.x, point.y, point.size, point.size, 0, 0, 2*Math.PI);
                 c.fill();
                 c.stroke();
+
+                // last layer vals
+                if (layerN == net.layers.length - 1) {
+                    c.fillStyle = 'white';
+                    c.font = (point.size*2) + "px Arial";
+                    c.fillText(node.value.toFixed(2), point.x + point.size * 3, point.y + (point.size/2));
+                }
             }
 
             
@@ -122,11 +154,23 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                     wN++;
                 }
             }
+
+            if (layerN == 0) {
+                firstLayerVals.push(node.value - node.bias);
+            }
             nodeN++;
         }
         layerN++;
     }
 
+    drawImage({
+        ctx: c,
+        image: firstLayerVals,
+        xPixels: 28,
+        pos: { x: 20, y: 100, width: 100 },
+    });
+
+    (window as any).img_vals = firstLayerVals;
 }
 
 
@@ -136,6 +180,7 @@ function draw(c:CanvasRenderingContext2D) {
     drawNet(c, "NODE_ONLY");
 }
 
+let listenersAdded = false;
 function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
     let canvas = document.getElementById("canvas") as HTMLCanvasElement;
     let context = canvas.getContext('2d')!;
@@ -150,9 +195,11 @@ function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
         context.clearRect(0, 0, canvas.width, canvas.height);
         drawFunc(context); 
     }
-    window.addEventListener('resize', onResize);
-    onResize();
 
+    onResize();
+    
+    if (listenersAdded) { return; } else { listenersAdded = true; }
+    window.addEventListener('resize', onResize);
     canvas.addEventListener('click', (e)=>{ event_click(e); });
 }
 
@@ -212,3 +259,13 @@ function event_click(e:MouseEvent) {
 
 
 
+(window as any).printImg = () => {
+    let i = 0;
+    let out = ""
+    while (i < (window as any).img_vals.length) {
+    out += (window as any).img_vals[i].toString().padStart(4, "_");
+    if ((i + 1) % 28 == 0) { out += "\n"; }
+    i++;
+    }
+    console.log(out);
+}
