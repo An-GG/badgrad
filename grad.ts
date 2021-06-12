@@ -477,3 +477,10 @@ TRAIN_MNIST();
 //      - instead of this, i thought abt using final (non-networked) multiplier, like a node with a single previous layer node that does not go through activationfn
 //          - this wont work, this is same as making values positive and negating later because net is forced to set multiplier to smth negative
 //      - instead, this is basically just a final linear transformation that still has access to all the net's information and the fact that a value is negative can be backpropigated
+//
+//
+// TODO fix issue with large num of weights
+//
+//  - layers with a lot of weights for each node are summing to really large, so it does not make sense to just allow the net to self adjust because you would need a very small scalar value (current is 0.05) which is not efficient for other layers
+//  - need to make contribution proportional to 1 / num_weights 
+//  - this will (probably?) affect derivative (wait yes this is good, rn problem is derivative for these is too high) 
