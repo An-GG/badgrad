@@ -27,6 +27,20 @@ function sigmoid(x:number):number {
     return (1 / (1 + Math.pow(Math.E, -x)));
 }
 
+function maxIndex(arr:number[]):number {
+    let i = 0;
+    let max = -1;
+    let ind = -1;
+    for (let x of arr) {
+        if (x > max) {
+            max = x;
+            ind = i;
+        }
+        i++
+    }
+    return ind;
+}
+
 function drawImage(ops: {
     image: number[],
     xPixels: number,
@@ -60,7 +74,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
     let possiblePointSizes: number[] = [];
     let firstLayerVals = [];
-
+    let lastLayerVals = [];
 
     let layerN = 0;
     for (let layer of net.layers) {
@@ -119,6 +133,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                     c.fillStyle = 'white';
                     c.font = (point.size*2) + "px Arial";
                     c.fillText(node.value.toFixed(2), point.x + point.size * 3, point.y + (point.size/2));
+                    lastLayerVals.push(node.value);
                 }
             }
 
@@ -171,6 +186,16 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
     });
 
     (window as any).img_vals = firstLayerVals;
+
+    // chosen answer label
+    let chosen_ans = maxIndex(lastLayerVals);
+    console.log(chosen_ans);
+
+    c.fillStyle = 'white';
+    c.font = '30px Arial';
+    if (chosen_ans != -1) {
+        c.fillText(chosen_ans.toString(), 20, 250);
+    }
 }
 
 
