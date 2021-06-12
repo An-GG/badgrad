@@ -91,4 +91,13 @@ export class MnistReader<T extends "LABELS" | "IMAGES"> {
     } 
 }
 
+async function main() {    
+    let testg = await MnistReader.getReader("TRAINING", "IMAGES");
+    testg.next();
+    testg.next();
+    let x = testg.vectorToASCII(testg.next());
+    console.log(x);
+}
+
+//main();
 

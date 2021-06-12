@@ -88,14 +88,14 @@ function calc_net(net:Net, input?:LayerValues):number[] {
     let lN = 0;
     for (let layer of net.layers) {
         for (let node of layer.nodes) {
-            if (node.input_layer_weights == undefined) { continue; }
-            
             let linkSum = 0;
             
-            let linkN = 0;
-            for (let w of node.input_layer_weights) {
-                linkSum+=(w * net.layers[lN-1].nodes[linkN].value);
-                linkN++;
+            if (node.input_layer_weights != undefined) {
+                let linkN = 0;
+                for (let w of node.input_layer_weights) {
+                    linkSum+=(w * net.layers[lN-1].nodes[linkN].value);
+                    linkN++;
+                }
             }
             
             node.value = net.activation_fn( linkSum + node.bias );
@@ -106,24 +106,124 @@ function calc_net(net:Net, input?:LayerValues):number[] {
 }
 
 
-
-
-function train_net(net:Net, trainingData: { inputLayer: Layer, outputLayer: Layer }[]) {
-
-    
+function average_summed_nudge(nudge: NetNudge, n:number):NetNudge {
+    let average_nudge:NetNudge = JSON.parse(JSON.stringify(nudge));    
+    let layerN = 0;
+    for (let layer of average_nudge) {
+        let nodeN = 0;
+        for (let l_node of layer.nodeNudges) {
+            l_node.biasNudge = l_node.biasNudge / n;
+            let wN = 0;
+            for (let weight of l_node.weightNudges) {
+               l_node.weightNudges[wN] = weight / n;
+               wN++;
+            }
+            nodeN++;
+        }
+        layerN++;
+    }
+    return average_nudge;
 }
+
+
+function nudge_network(net:Net, nudge: NetNudge, scalar: number):Net {
+    let modded_net:Net = net;
+    modded_net.layers = JSON.parse(JSON.stringify(net.layers));
+    let layerN = 0;
+    for (let layer of nudge) {
+        let nodeN = 0;
+        for (let l_node of layer.nodeNudges) {
+            modded_net.layers[layerN].nodes[nodeN].bias += (l_node.biasNudge * scalar);
+            let wN = 0;
+            let weights = modded_net.layers[layerN].nodes[nodeN].input_layer_weights;
+            if (weights) {    
+                for (let weight of l_node.weightNudges) {
+                    weights[wN] += l_node.weightNudges[wN] * scalar;
+                    wN++;
+                }
+            }
+            nodeN++;
+        }
+        layerN++;
+    }
+    return modded_net
+}
+
+
+
+
+function train_net(net:Net, trainingData: { inputLayer: LayerValues, outputLayer: LayerValues }[]):Net {
+    let average_nudge: NetNudge = [];
+    // setup nudge to be same as net structure
+    let layerN = 0; 
+    for (let num_nodes of net.nodes_per_layer) {
+        // we can ignore prevLayerPDs because we only need it during backprop
+        // TODO: make it optional
+        let layernudge: LayerNudge = {
+            prevLayerPDs: [],
+            nodeNudges: []
+        }
+        for (let i = 0; i < num_nodes; i++) {
+            let nodenudge: NodeNudge = {
+                biasNudge: 0,
+                weightNudges: []
+            }    
+            if (layerN > 0) {
+                for (let j = 0; j < net.nodes_per_layer[layerN-1]; j++) {
+                    nodenudge.weightNudges.push(0);
+                }
+            }
+            layernudge.nodeNudges.push(nodenudge);
+        }
+        average_nudge.push(layernudge);
+        layerN++;
+    }
+   
+    // sum the nudges from each training iteration, avg
+
+    let trainingIteration = 0;    
+    for (let d of trainingData) {
+        calc_net(net, d.inputLayer);
+        let netnudge = backprop_net(net, d.outputLayer);
+        
+
+        let layerN = 0;
+        for (let layer of average_nudge) {
+            let nodeN = 0;
+            for (let l_node of layer.nodeNudges) {
+                l_node.biasNudge += netnudge[layerN].nodeNudges[nodeN].biasNudge;
+                let wN = 0;
+                for (let weight of l_node.weightNudges) {
+                    l_node.weightNudges[wN] += netnudge[layerN].nodeNudges[nodeN].weightNudges[wN];
+                    wN++;
+                }
+                nodeN++;
+            }
+            layerN++;
+        }
+        trainingIteration++;
+    }
+
+    let avg = average_summed_nudge(average_nudge, trainingIteration);    
+
+    return nudge_network(net, avg, 0.05);
+}
+
+
 
 type NodeNudge = {
     biasNudge:number, 
     weightNudges:number[]
-}
+};
 
 type LayerNudge = {
     prevLayerPDs:number[],
     nodeNudges:NodeNudge[]
-}
+};
 
-function backprop_net(net: Net, target_output: number[]) {
+type NetNudge = LayerNudge[];
+
+function backprop_net(net: Net, target_output: number[]): LayerNudge[] {
     let netnudges: LayerNudge[] = [];
     let currentPDs: number[] = [];
 
@@ -133,13 +233,18 @@ function backprop_net(net: Net, target_output: number[]) {
        nodeN++;
     }
 
+    // all but first layer
     for (let lN = net.layers.length - 1; lN > 0; lN--) {
         let nudge = get_layer_PDs(net.layers[lN], net.layers[lN-1], currentPDs, net);
         netnudges.push(nudge);
         currentPDs = nudge.prevLayerPDs;
     }
 
+    // final (first / input) layer
+    netnudges.push(get_layer_PDs(net.layers[0], { nodes:[] }, currentPDs, net));
+
     netnudges.reverse();
+    return netnudges;
 }
 
 function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net): LayerNudge {
@@ -173,6 +278,7 @@ function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net):
                 nodeNudge.weightNudges.push(wPD);
                 prevLayerPDTotals[wN].push(prevValuePD);
                 wN++;
+
             }
         }
         out.nodeNudges.push(nodeNudge);
@@ -186,7 +292,7 @@ function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net):
         }
         out.prevLayerPDs.push( sum / pdarr.length );
     }
-
+    
     return out;
 }
 
@@ -194,11 +300,11 @@ function get_layer_PDs(layer:Layer, prev:Layer, thislayerPDs:number[], net:Net):
 
 
 
-function save_net(net:Net) {
+function save_net(net:Net, name:string) {
     let save_obj = {
         layers:net.layers
     }
-    fs.writeFileSync("viewer/net.json", JSON.stringify(save_obj));
+    fs.writeFileSync("viewer/"+name+".json", JSON.stringify(save_obj));
 }
 
 
@@ -216,18 +322,36 @@ function derivative_relu(x:number):0|1 {
 
 
 
-
 let newnet = new_net({
     activation_fn: relu,
     derivative_activation_fn: derivative_relu,
     nodes_per_layer: [7, 4, 4, 3]
 }, (i)=>{ return Math.random(); });
 
-save_net(newnet);
+save_net(newnet, "net");
+
+console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
+
+newnet = train_net(newnet, [{
+    inputLayer: [1,0,0,0,0,0,0],
+    outputLayer: [0,1,0]
+}]);
+
+save_net(newnet, "modded");
 
 
+console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
 
 
+newnet = train_net(newnet, [{
+    inputLayer: [1,0,0,0,0,0,0],
+    outputLayer: [0,1,0]
+}]);
+
+save_net(newnet, "net");
+
+
+console.log(JSON.stringify(calc_net(newnet, [1,0,0,0,0,0,0]), null, 2));
 
 
 
