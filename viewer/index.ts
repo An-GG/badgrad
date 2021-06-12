@@ -28,6 +28,14 @@ function sigmoid(x:number):number {
 }
 
 function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
+
+
+    // netfile label
+    c.fillStyle = 'white';
+    c.font = "30px Arial";
+    c.fillText(netfile_name, 20, 50);
+
+    let possiblePointSizes: number[] = [];
     
     let layerN = 0;
     for (let layer of net.layers) {
@@ -39,7 +47,6 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
             //if (Math.abs(n.bias) > maxbias) { maxbias = Math.abs(n.bias) };
             //if (Math.abs(n.value) > maxval) { maxval = Math.abs(n.value) };
         } 
-
         for (let node of layer.nodes) {
             c.strokeStyle = "#ffffff";
             c.lineWidth = 3;
@@ -49,12 +56,16 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
             let rad = 25;
             let point = {
                 x: (1+layerN) * layerSpacing,
-                y: (1+nodeN) * nodeSpacing
+                y: (1+nodeN) * nodeSpacing,
+                size: (1) * (window.innerHeight / layer.nodes.length)
             }
+
+            possiblePointSizes.push(point.size < 10 ? 10 : point.size);
+            point.size = Math.min(...possiblePointSizes);
             if (mode == "NODE_ONLY") {
 
 
-                c.lineWidth = 3;
+                c.lineWidth = 1;
                 c.beginPath();
                 let nodebias_rel = Math.round(Math.abs(node.bias*255)); //parseInt((sigmoid(Math.abs(node.bias) / maxbias)*255).toString());
                 let nodeval_rel = Math.round(Math.abs(node.value*255));// parseInt((sigmoid(Math.abs(node.value) / maxval)*255).toString());
@@ -62,8 +73,6 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                 if (nodebias_rel > 255) { nodebias_rel = 255; }
                 if (nodeval_rel > 255) { nodeval_rel = 255; }
 
-                console.log("===========");
-                console.log(nodeval_rel);
                 if (node.bias > 0) {
                     c.strokeStyle = "#0000"+(nodebias_rel.toString(16).padStart(2,"0"))
                 } else {
@@ -76,9 +85,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                     c.fillStyle = "#"+(nodeval_rel.toString(16).padStart(2,"0")) + "0000";
                 }
 
-                console.log(node);
-                console.log(c.fillStyle);
-                c.ellipse(point.x, point.y, 25, 25, 0, 0, 2*Math.PI);
+                c.ellipse(point.x, point.y, point.size, point.size, 0, 0, 2*Math.PI);
                 c.fill();
                 c.stroke();
             }
@@ -132,6 +139,11 @@ function draw(c:CanvasRenderingContext2D) {
 function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
     let canvas = document.getElementById("canvas") as HTMLCanvasElement;
     let context = canvas.getContext('2d')!;
+
+    // clear
+    context.fillStyle = "black";
+    context.fillRect(0,0,window.innerWidth,window.innerHeight);
+
     function onResize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -140,6 +152,8 @@ function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
     }
     window.addEventListener('resize', onResize);
     onResize();
+
+    canvas.addEventListener('click', (e)=>{ event_click(e); });
 }
 
 function loadJSON(ref:string, cb:(response:string)=>any) {
@@ -154,6 +168,19 @@ function loadJSON(ref:string, cb:(response:string)=>any) {
     xobj.send(null);
 }
 
+function reload_netfile() {
+    loadJSON(netfile_name, (r) => {
+        net = JSON.parse(r);
+        (window as any).net_obj = net;
+        setupCanvasContext(draw);
+    });
+}
+
+function next_netfile() {
+    let netn = parseInt(netfile_name.substring("netfile".length, netfile_name.length - ".json".length));
+    netfile_name = 'netfile'+(netn+1)+'.json';
+    reload_netfile();
+}
 
 
 
@@ -164,10 +191,24 @@ if (urlparams.has('netfile')) {
     netfile_name = urlparams.get('netfile') + '.json';
 }
 
-loadJSON(netfile_name, (r) => {
-    net = JSON.parse(r);
-    setupCanvasContext(draw);
-});
+reload_netfile();
+
+
+
+
+
+
+
+// Interaction
+
+function event_click(e:MouseEvent) {
+    let pos = {
+        x: e.pageX,
+        y: e.pageY
+    }
+
+    next_netfile();
+}
 
 
 
