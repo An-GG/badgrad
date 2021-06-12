@@ -5,6 +5,7 @@ import fs from 'fs';
 import { MnistReader } from "./interface";
 
 export type Node = {
+    value_before_activation: number
     value: number
     bias: number
     input_layer_weights: number[] //first layer wont have obv
@@ -29,7 +30,6 @@ type NetConfig = Omit<Net, 'layers'>
 type FromNetfileConfig = Omit<NetConfig, 'nodes_per_layer'>
 
 type ParameterInitialzerInputs = 
-    { paramType: "NodeValue", layerN:number, nodeN:number, net:Net } |
     { paramType: "NodeBias",  layerN:number, nodeN:number, net:Net } |
     { paramType: "Weight",    layerN:number, nodeN:number, weightN:number, net:Net }
 
@@ -47,9 +47,11 @@ function new_net(cfg:NetConfig, param_init_function:(inputs:ParameterInitialzerI
         for (let nodeN = 0; nodeN < numnodes; nodeN++) {
             let newnode:Node = {
                 bias: param_init_function({ paramType:"NodeBias", layerN:layerN, nodeN:nodeN, net:out }),
-                value: param_init_function({ paramType:"NodeValue", layerN:layerN, nodeN:nodeN, net:out }),
-                input_layer_weights: []
+                value_before_activation: 0,
+                input_layer_weights: [],
+                value:0
             }
+            newnode.value = cfg.activation_fn(newnode.value_before_activation);
             if (layerN > 0) { 
                 for (let weightN = 0; weightN < cfg.nodes_per_layer[layerN - 1]; weightN++) {
                     newnode.input_layer_weights.push(
@@ -105,7 +107,8 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
 
     // Calc First Layer Vals
     for (let nodeN = 0; nodeN < isolated_net.layers[0].nodes.length; nodeN++) {
-        let val = net.activation_fn( isolated_net.layers[0].nodes[nodeN].bias + input[nodeN] );
+        isolated_net.layers[0].nodes[nodeN].value_before_activation = isolated_net.layers[0].nodes[nodeN].bias + input[nodeN];
+        let val = net.activation_fn(isolated_net.layers[0].nodes[nodeN].value_before_activation);
         isolated_net.layers[0].nodes[nodeN].value = val;
     } 
 
@@ -129,6 +132,7 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
                 wN++;
             }
 
+            isolated_net.layers[layerN].nodes[nodeN].value_before_activation = node.bias + weightedSum; 
             isolated_net.layers[layerN].nodes[nodeN].value = net.activation_fn( node.bias + weightedSum ); 
             nodeN++;
         }
@@ -137,36 +141,6 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
 
     if (modifyOriginal) { net.layers = isolated_net.layers; }    
     return get_net_layer_vals(isolated_net, isolated_net.layers.length - 1);
-}
-
-function calc(net:Net, input:LayerValues):number[] {
-    if (input) { set_net_input(net, input); }
-
-    let lN = 0;
-    for (let layer of net.layers) {
-        let nodeN = 0;
-        for (let node of layer.nodes) {
-            let linkSum = 0;
-            let linkN = 0;
-            if (node.input_layer_weights != undefined) {
-                for (let w of node.input_layer_weights) {
-                    linkSum+=(w * net.layers[lN-1].nodes[linkN].value);
-                    linkN++;
-                }
-            } else {
-                node.value += node.bias;
-                continue;
-            }
-            
-            // contribution needs to be inversely proportional to # of weights, otherwise PD will be unfairly higher
-            linkSum = linkSum / linkN; 
-
-            node.value = net.activation_fn( linkSum + node.bias );
-            nodeN++;
-        }
-        lN++;
-    }
-    return get_net_layer_vals(net, net.layers.length - 1);
 }
 
 
@@ -221,24 +195,145 @@ type TrainingMetadata = {
     error: number,
 }
 
+type NodeGradient = {
+    // The gradient of the current node, for ex. last layer nodes, nodePD = 2 * difference
+    nodePD:number,
+    // The gradient / direction & magnitude by which to change each input weight (length = # of nodes in prev layer. for first layer this = [])
+    weightsPD:number[],
+    // The gradient / direction & magnitude by which to change the node's bias
+    biasPD:number
+}
+type LayerGradient = NodeGradient[];
+type NetGradient = LayerGradient[];
 
 
+// Initializes an empty gradient with zeros for a givent net structure
+function get_blank_gradient(net:Net):NetGradient {
+    let g:NetGradient = [];
+    for (let l of net.layers) {
+        let gL:LayerGradient = [];
+        for (let n of l.nodes) {
+            
+            let weightsPD = [];
+            for (let w of n.input_layer_weights) { weightsPD.push(0); }
 
+            let gN:NodeGradient = {
+                nodePD:0,
+                weightsPD:weightsPD,
+                biasPD:0
+            }
+            gL.push(gN);
+        }
+        g.push(gL);
+    }
+    return g;
+}
+
+function average_grads(grads:NetGradient[]):NetGradient {
+    let avg:NetGradient = JSON.parse(JSON.stringify(grads[0]));
+    let sum:NetGradient = JSON.parse(JSON.stringify(grads[0]));
+    for (let gradN = 1; gradN < grads.length; gradN++) {
+        let grad = grads[gradN];
+        for (let ln = 0; ln < grad.length; ln++) {
+            let layer = grad[ln];
+            for (let nn = 0; nn < layer.length; nn++) {
+                let node_grad = layer[nn];
+                sum[ln][nn].biasPD += node_grad.biasPD;   
+                avg[ln][nn].biasPD = sum[ln][nn].biasPD / (gradN + 1);
+                sum[ln][nn].nodePD += node_grad.nodePD;
+                avg[ln][nn].nodePD = sum[ln][nn].nodePD / (gradN + 1);
+                for (let wN = 0; wN < node_grad.weightsPD.length; wN++) {
+                    sum[ln][nn].weightsPD[wN] += node_grad.weightsPD[wN];
+                    avg[ln][nn].weightsPD[wN] = sum[ln][nn].weightsPD[wN] / (gradN + 1);
+                }
+            } 
+        }
+    }
+    return avg;
+}
 
 function train(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
 
-    // Nudges are all just summed and divided at end
-    let nudge: NetNudge = [];
+    let isolated_net:Net = get_net_copy(net);
+
+    let calculated_grads: NetGradient[] = [];
 
     for (let training_pair of training_data) {
         
-        // Strategy
-        //
-        //
+        let net_grad: NetGradient = get_blank_gradient(isolated_net);
+        
+        // Calculate net fully 
+        calc_net(isolated_net, training_pair.inputLayer, true);
+        let vector_error = [];
+        for (let nodeN = 0; nodeN < training_pair.outputLayer.length; nodeN++) {
+            vector_error.push( training_pair.outputLayer[nodeN] - isolated_net.layers[net.layers.length - 1].nodes[nodeN].value );
+        }
+
+        // Start at last layer and get loss (PD) for each node in last layer
+        let currentLayerN = net.layers.length - 1;        
+
+        // For final layer, PD is 2 * (difference)
+        let scalar_error = 0;
+        for (let nodeN = 0; nodeN < vector_error.length; nodeN++) {
+            let diff = vector_error[nodeN];
+            scalar_error += diff * diff;
+            net_grad[currentLayerN][nodeN].nodePD = 2 * diff;
+        }
+        scalar_error = Math.sqrt(scalar_error);
 
         
+        // Now, we can use PD to calculate previous layer PDs recursively
+        while (currentLayerN >= 0) {
+            
+            // For each node in layer, calc NodeGradient
+            for (let nodeN = 0; nodeN < isolated_net.layers[currentLayerN].nodes.length; nodeN++) {
+                let node = isolated_net.layers[currentLayerN].nodes[nodeN];
+                let node_grad = net_grad[currentLayerN][nodeN];
 
-    } 
+                // For final layer, PD is already defined
+                if (currentLayerN < net.layers.length - 1) {
+                    // To calculate PD, need to average this EQ across all nodes for which this node in an input, 
+                    // (Link_Weight / # Nodes in this Layer) 
+                    // * derivative_activation( Value before activation of destination node ) 
+                    // * PD of destination node
+                    
+                    let nodePDSum = 0;
+                    let nextLayerNodes = isolated_net.layers[currentLayerN + 1].nodes;
+
+                    let nextLayerNodeN = 0;
+                    while(nextLayerNodeN < nextLayerNodes.length) {
+                        let linkWeight = nextLayerNodes[nextLayerNodeN].input_layer_weights[nodeN];
+                        let numWeights = nextLayerNodes[nextLayerNodeN].input_layer_weights.length;
+                        let nextNodePD = net_grad[currentLayerN + 1][nextLayerNodeN].nodePD;
+                        let deriv_avfn = isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation );
+
+                        nodePDSum += (linkWeight / numWeights) * deriv_avfn * nextNodePD;
+                        
+                        nextLayerNodeN++;
+                    }
+                    node_grad.nodePD = (nodePDSum / nextLayerNodeN);
+                }
+
+                // Calculate Bias Grad for each node in this layer
+                node_grad.biasPD = node_grad.nodePD * isolated_net.derivative_activation_fn( node.value_before_activation );
+
+                // Calculate Weight Grad
+                for (let wN = 0; wN < node.input_layer_weights.length; wN++) {
+                    let num_weights = node.input_layer_weights.length;
+                    let wgrad = (isolated_net.layers[currentLayerN - 1].nodes[wN].value / num_weights) 
+                                * isolated_net.derivative_activation_fn( node.value_before_activation ) 
+                                * node_grad.nodePD;
+                    node_grad.weightsPD[wN] = wgrad;
+                }
+
+                currentLayerN--;
+
+            }
+        }
+        calculated_grads.push(net_grad);
+    }
+
+    let avg = average_grads(calculated_grads);
     
 
     return {}  as any;
@@ -545,7 +640,7 @@ async function TRAIN_MNIST() {
         mnist_net = train_net(mnist_net, batch);
         save_net(mnist_net, i.toString());        
         console.log((mnist_net));
-        console.log("Iteration: "+i.toString() + " " + (npass/(npass+nfail)) + " " + mnist_net.training_metadata.error);
+        console.log("Iteration: "+i.toString() + " " + (mnist_net as any).training_metadata.error) + " " + (npass/(npass+nfail));
     }
 
 }
