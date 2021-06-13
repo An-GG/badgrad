@@ -389,26 +389,26 @@ function TRAIN_TEST() {
             {
                 inputLayer: [0,0,0,0,0,0,5],
                outputLayer: [2,0,0]
+            },
+            {
+                inputLayer: [0,0,0,0,0,0,2],
+               outputLayer: [0,1,6]
             }
     ];
 
-    calc_net(newnet, training[1].inputLayer, true);
-    save_net(newnet, "1");
 
-
-    for (let i = 2; i < 1000; i++) {
+    let err = 100;
+    let n = 0;
+    while (err > 0.00001) {
         newnet = train_net(newnet, training);
-        
-        console.log(i+"   "+(newnet.training_metadata as any).error);
-
-        calc_net(newnet, training[1].inputLayer, true);
-        if (i == 999) { calc_net(newnet, training[0].inputLayer, true); }
-
-        save_net(newnet, i.toString());
-
-
+        console.log(n+"   "+(newnet.training_metadata as any).error);
+        calc_net(newnet, training[n % training.length].inputLayer, true);
+        save_net(newnet, n.toString());
+//        err = parseInt((newnet.training_metadata as any).error);
+        n++;    
     }
-
+    let icopy = JSON.parse(JSON.stringify(n));
+    console.log(":::::MARK:::::"); 
 }
 
 
