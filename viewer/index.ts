@@ -129,8 +129,8 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
     // netfile label
     c.fillStyle = 'white';
-    c.font = "30px Arial";
-    c.fillText(netfile_name, 20, 50);
+    c.font = "15px 'Roboto Mono'";
+    c.fillText(net_name, 20, 50);
 
     let possiblePointSizes: number[] = [];
     let firstLayerVals = [];
@@ -194,15 +194,15 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                 // last layer vals
                 if (layerN == net.layers.length - 1) {
                     c.fillStyle = 'white';
-                    c.font = (point.size*2) + "px Arial";
-                    c.fillText(node.value.toFixed(2), point.x + point.size * 3, point.y + (point.size/2));
+                    c.font = (point.size / 1.5) + "px 'Roboto Mono'";
+                    c.fillText(node.value.toFixed(2), point.x + point.size * 1.5, point.y + (point.size/6));
                     lastLayerVals.push(node.value);
                 }
                 // first layer vals
                 if (layerN == 0) {
                     c.fillStyle = 'white';
-                    c.font = (point.size*2) + "px Arial";
-                    c.fillText(node.value.toFixed(2), point.x - point.size * 6, point.y + (point.size/1.5));
+                    c.font = (point.size / 1.5) + "px 'Roboto Mono'";
+                    c.fillText(node.value.toFixed(2), point.x - point.size * 3, point.y + (point.size/6));
                     lastLayerVals.push(node.value);
                 }
             }
@@ -259,10 +259,10 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
     console.log(chosen_ans);
 
     c.fillStyle = 'white';
-    c.font = '30px Arial';
+    c.font = '15px Roboto Mono';
     if (chosen_ans != -1) {
-        c.fillText(chosen_ans.toString(), 20, 250);
-        c.fillText(net.training_metadata.error.toString(), 20, 300);
+        c.fillText("OUTPUT: " + chosen_ans.toString(), 20, window.innerHeight - 100);
+        c.fillText("RMSERR: " + net.training_metadata.error.toString(), 20, window.innerHeight - 50);
     }
 }
 
@@ -317,8 +317,10 @@ function getNodesPerLayer(net:Netfile['iterations'][''] & {[k:string]:any}):numb
 function reload_netfile() {
     loadJSON(netfile_name, (r) => {
         netfile = JSON.parse(r);
-       
         let isolated_net = netfile.iterations[net_name];
+        (window as any).net_obj = net;
+        (window as any).netfile_obj = netfile;
+        
         // Gotta add activation
         net = {
             activation_fn: (i)=> { return (i > 0 ? i : 0); },
@@ -328,28 +330,41 @@ function reload_netfile() {
             training_metadata: isolated_net.training_metadata
         }
 
-
         console.log(net.layers[0].nodes[0].value_before_activation);
-        (window as any).net_obj = net;
         setupCanvasContext(draw);
+
+        net_names = Object.keys(netfile.iterations);
+        current_net_index = net_names.indexOf(net_name);
+
+        slider.min = "0"; 
+        slider.max = net_names.length.toString();
     });
 }
 
-function next_netfile() {
-    let netn = parseInt(netfile_name.substring("netfile".length, netfile_name.length - ".json".length));
-    netfile_name = 'netfile'+(netn+1)+'.json';
+function next_netfile(fromSlider?:boolean) {
+    current_net_index++;
+    net_name = net_names[current_net_index];
+    reload_netfile();
+    var newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?net=' + net_name;
+    if (!fromSlider) { slider.value = current_net_index.toString(); }
+    window.history.pushState({path:newurl},'',newurl);
     reload_netfile();
 }
 
-
-
+function sliderMove() {
+    current_net_index = parseInt(slider.value) - 1;
+    next_netfile(true);
+}
 
 let netfile_name = 'netfile.json';
-let net_name = "1";
+let net_name = "0";
 let urlparams = new URLSearchParams(window.location.search);
 if (urlparams.has('net')) {
     net_name = urlparams.get('net')!;
 }
+let net_names:string[] = [];
+let current_net_index = 0;
+let slider = window.document.getElementById('slider') as HTMLInputElement;
 
 reload_netfile();
 

@@ -34,7 +34,8 @@ type ParameterInitialzerInputs =
     { paramType: "Weight",    layerN:number, nodeN:number, weightN:number, net:Net }
 
 
-function new_net(cfg:NetConfig, param_init_function:(inputs:ParameterInitialzerInputs)=>number):Net {
+function new_net(cfg:NetConfig & { init_fn: (inputs:ParameterInitialzerInputs)=>number }):Net {
+    let param_init_function = cfg.init_fn;
     let out:Net = {
         layers: [],
         nodes_per_layer:cfg.nodes_per_layer,
@@ -385,8 +386,9 @@ function TRAIN_TEST() {
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: [7, 4, 4, 3]
-    }, (i)=>{ return (Math.random() - 0.5); });
+        nodes_per_layer: [7, 4, 4, 3],
+        init_fn: (i)=>{ return (Math.random() - 0.5) }
+    });
 
 
     let training = [
@@ -411,7 +413,9 @@ function TRAIN_TEST() {
         newnet = train_net(newnet, training);
         console.log(n+"   "+(newnet.training_metadata as any).error);
         calc_net(newnet, training[n % training.length].inputLayer, true);
-        save_net(newnet, n.toString());
+        if (n % 256 == 0) {
+            save_net(newnet, n.toString());
+        }
 //        err = parseInt((newnet.training_metadata as any).error);
         n++;    
     }
@@ -428,7 +432,9 @@ async function TRAIN_MNIST() {
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
         nodes_per_layer: [784, 32, 10],
-    }, (i)=>{ return (Math.random() - 0.5); });
+        init_fn: (i)=>{ return (Math.random() - 0.5) }
+    });
+        
 
     let imgreader = await MnistReader.getReader("TRAINING", "IMAGES");
     let lblreader = await MnistReader.getReader("TRAINING", "LABELS");

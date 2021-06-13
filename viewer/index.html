@@ -1,8 +1,66 @@
 <!DOCTYPE html>
 <html>
-    <head style="margin:0; padding:0; border:none;"></head>
+    <head style="margin:0; padding:0; border:none;">
+        <link rel="preconnect" href="https://fonts.gstatic.com">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+    </head>
     <body style="width:100%; height:100%; margin:0; padding:0; border:none;"> 
-        <canvas id="canvas" style="display:block; background:black; margin:0; padding:0; border:none; width:100%; height:100%;"><canvas>
+
+        <div style="
+            pointer-events: none; 
+            position:fixed; 
+            top:0; left:0; bottom:0; right:0; 
+            width:100%; height:100%; 
+            border:none; margin:0; padding:0; 
+            overflow: hidden;">
+            <div class="slidecontainer" style="pointer-events: auto;">
+                <input id="slider" type="range" min="0" max="1" value="0" class="slider" id="myRange" oninput="sliderMove()">
+            </div>
+        </div>
+        <canvas id="canvas" style="display:block; background:black; margin:0; padding:0; border:none; width:100%; height:100%;"></canvas>
         <script src="index.js"></script>
     </body>
+
+    <style>
+        .slidecontainer {
+            position: fixed;
+            bottom: 0;
+            margin: 0;
+            width: 100%; /* Width of the outside container */
+        }
+
+        /* The slider itself */
+        .slider {
+          -webkit-appearance: none;  /* Override default CSS styles */
+          appearance: none;
+          width: 100%; /* Full-width */
+          height: 25px; /* Specified height */
+          background: #d3d3d3; /* Grey background */
+          outline: none; /* Remove outline */
+          opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+          -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+          transition: opacity .2s;
+        }
+
+        /* Mouse-over effects */
+        .slider:hover {
+          opacity: 1; /* Fully shown on mouse-over */
+        }
+
+        .slider::-webkit-slider-thumb {
+          -webkit-appearance: none; /* Override default look */
+          appearance: none;
+          width: 25px; /* Set a specific slider handle width */
+          height: 25px; /* Slider handle height */
+          background: #04AA6D; /* Green background */
+          cursor: pointer; /* Cursor on hover */
+        }
+
+        .slider::-moz-range-thumb {
+          width: 25px; /* Set a specific slider handle width */
+          height: 25px; /* Slider handle height */
+          background: #04AA6D; /* Green background */
+          cursor: pointer; /* Cursor on hover */
+        }
+    </style>
 </html>
