@@ -1,6 +1,7 @@
 
 type Neuron = {
     value: number
+    value_before_activation: number
     bias: number
     input_layer_weights?: number[] //first layer wont have obv
 }
@@ -85,10 +86,6 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
         let maxbias = 1;
         let maxval = 1;
-        for (let n of layer.nodes) {
-            //if (Math.abs(n.bias) > maxbias) { maxbias = Math.abs(n.bias) };
-            //if (Math.abs(n.value) > maxval) { maxval = Math.abs(n.value) };
-        } 
         for (let node of layer.nodes) {
             c.strokeStyle = "#ffffff";
             c.lineWidth = 3;
@@ -99,7 +96,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
             let point = {
                 x: (1+layerN) * layerSpacing,
                 y: (1+nodeN) * nodeSpacing,
-                size: (1) * (window.innerHeight / layer.nodes.length)
+                size: (1/3) * (window.innerHeight / layer.nodes.length)
             }
 
             possiblePointSizes.push(point.size < 10 ? 10 : point.size);
@@ -107,7 +104,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
             if (mode == "NODE_ONLY") {
 
 
-                c.lineWidth = 1;
+                c.lineWidth = point.size * 0.3;
                 c.beginPath();
                 let nodebias_rel = Math.round(Math.abs(node.bias*255)); //parseInt((sigmoid(Math.abs(node.bias) / maxbias)*255).toString());
                 let nodeval_rel = Math.round(Math.abs(node.value*255));// parseInt((sigmoid(Math.abs(node.value) / maxval)*255).toString());
@@ -116,9 +113,9 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                 if (nodeval_rel > 255) { nodeval_rel = 255; }
 
                 if (node.bias > 0) {
-                    c.strokeStyle = "#0000"+(nodebias_rel.toString(16).padStart(2,"0"))
+                    c.strokeStyle = "#0022"+(nodebias_rel.toString(16).padStart(2,"0"))
                 } else {
-                    c.strokeStyle = "#"+(nodebias_rel.toString(16).padStart(2,"0")) + "0000";
+                    c.strokeStyle = "#"+(nodebias_rel.toString(16).padStart(2,"0")) + "2200";
                 }
 
                 if (node.value > 0) {
@@ -161,11 +158,11 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
                     let weightval_rel = Math.round((w / maxweight) * 255);
                     if (w > 0) {
-                        c.strokeStyle = "#0000"+weightval_rel.toString(16).padStart(2,"0");
+                        c.strokeStyle = "#0000ff";// "#0022"+weightval_rel.toString(16).padStart(2,"0");
                     } else {
-                        c.strokeStyle = "#"+weightval_rel.toString(16).padStart(2,"0")+"0000";
+                        c.strokeStyle = "#ff0000";//""#"+weightval_rel.toString(16).padStart(2,"0")+"2200";
                     }
-                    c.lineWidth = Math.abs((sigmoid(w)) - 0.5) * 10;
+                    c.lineWidth = Math.abs((sigmoid(w)) - 0.5) * point.size; 
                     c.moveTo(point.x, point.y);
                     c.lineTo(prevpoint.x, prevpoint.y);
                     c.stroke();
@@ -247,6 +244,7 @@ function loadJSON(ref:string, cb:(response:string)=>any) {
 function reload_netfile() {
     loadJSON(netfile_name, (r) => {
         net = JSON.parse(r);
+        console.log(net.layers[0].nodes[0].value_before_activation);
         (window as any).net_obj = net;
         setupCanvasContext(draw);
     });

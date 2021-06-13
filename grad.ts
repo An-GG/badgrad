@@ -377,7 +377,7 @@ function TRAIN_TEST() {
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: [10, 5, 7, 3]
+        nodes_per_layer: [7, 4, 4, 3]
     }, (i)=>{ return (Math.random() - 0.5); });
 
 
