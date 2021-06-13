@@ -321,13 +321,21 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
 }
 
 
-function save_net(net:Net, name:string) {
+type Netfile = {
+    iterations: {[n:string]:{ layers: Net['layers'], training_metadata: Net['training_metadata'] } }
+}
+function save_net(net:Net, name:string, netfile?:Netfile) {
     let save_obj = {
         layers:net.layers,
-        training_metadata: net.training_metadata    
+        training_metadata: net.training_metadata,
+    };
+    if (netfile) {
+        netfile.iterations[name] = save_obj;
+        fs.writeFileSync("viewer/netfile.json", JSON.stringify(netfile));
+    } else {
+        if (!fs.existsSync("temp_netfiles")) { fs.mkdirSync("temp_netfiles"); }
+        fs.writeFileSync("temp_netfiles/"+name+".json", JSON.stringify(net));
     }
-    
-    fs.writeFileSync("viewer/netfile"+name+".json", JSON.stringify(save_obj));
 }
 
 
@@ -396,7 +404,7 @@ function TRAIN_TEST() {
             }
     ];
 
-
+    let netfile:Netfile = { iterations: {} };
     let err = 100;
     let n = 0;
     while (err > 0.00001) {
@@ -431,7 +439,7 @@ async function TRAIN_MNIST() {
     let label = lblreader.next();
     let img = imgreader.next();
 
-    save_net(mnist_net, "0");        
+//    save_net(mnist_net, "0");        
     
 
     for (let i = 1; i < total_iterations; i++) {
@@ -459,7 +467,7 @@ async function TRAIN_MNIST() {
             
         }
         mnist_net = train_net(mnist_net, batch);
-        save_net(mnist_net, i.toString());        
+//        save_net(mnist_net, i.toString());        
         console.log("Iteration: "+i.toString() + " " + (mnist_net as any).training_metadata.error) + " " + (npass/(npass+nfail));
     }
 

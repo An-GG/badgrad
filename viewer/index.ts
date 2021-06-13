@@ -1,4 +1,3 @@
-
 type Neuron = {
     value: number
     value_before_activation: number
@@ -23,24 +22,18 @@ type Net = {
 }
 
 
-let net:Net;
+type Netfile = {
+    iterations: {[n:string]:{ layers: Net['layers'], training_metadata: Net['training_metadata'] } }
+}
 
+let net:Net;
+let netfile:Netfile;
 
 function calc_net_a0ada8b(net:Net, input:LayerValues, modifyOriginal?:boolean):Net {
     
     // NodeValue = avn_fn( NodeBias + (for each PNode in PrevLayer: PNode_k.value * Weight_k  /  #_of_Weights) )
     
     let isolated_net:Net = JSON.parse(JSON.stringify(net));
-
-    // Gotta add activation
-    isolated_net = {
-        activation_fn: (i)=> { return (i > 0 ? i : 0); },
-        derivative_activation_fn: (i) => { return (i > 0 ? 1 : 0); },
-        layers: isolated_net.layers,
-        nodes_per_layer: isolated_net.nodes_per_layer,
-        training_metadata: isolated_net.training_metadata
-    }
-
 
     // Calc First Layer Vals
     for (let nodeN = 0; nodeN < isolated_net.layers[0].nodes.length; nodeN++) {
@@ -122,6 +115,15 @@ function drawImage(ops: {
 
 }
 
+function scrunchPoint<P>(size: {w:number, h:number}, point:{x:number, y:number, [k:string]:any} & P, scrunch:{kW:number, kH:number}, anchor?:{x:number, y:number}): P {
+    let out : typeof point = JSON.parse(JSON.stringify(point));
+    anchor = anchor ? anchor : {x:size.w/2, y:size.h/2};
+    out.x = anchor.x + ((point.x - anchor.x) * scrunch.kW)
+    out.y = anchor.y + ((point.y - anchor.y) * scrunch.kH)
+    return out;
+}
+
+
 function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
 
@@ -155,6 +157,13 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
             possiblePointSizes.push(point.size < 10 ? 10 : point.size);
             point.size = Math.min(...possiblePointSizes);
+            point.size = point.size > 30 ? 30 : point.size;
+            point = scrunchPoint(
+                {w: window.innerWidth, h: window.innerHeight},
+                point,
+                {kW: 0.8, kH: 1});
+
+            (node as any).point = point;
             if (mode == "NODE_ONLY") {
 
 
@@ -189,6 +198,13 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                     c.fillText(node.value.toFixed(2), point.x + point.size * 3, point.y + (point.size/2));
                     lastLayerVals.push(node.value);
                 }
+                // first layer vals
+                if (layerN == 0) {
+                    c.fillStyle = 'white';
+                    c.font = (point.size*2) + "px Arial";
+                    c.fillText(node.value.toFixed(2), point.x - point.size * 6, point.y + (point.size/1.5));
+                    lastLayerVals.push(node.value);
+                }
             }
 
             
@@ -204,10 +220,7 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
                 let wN = 0;
                 let weightSpacing = (window.innerHeight) / (1 + node.input_layer_weights.length);
                 for (let w of node.input_layer_weights) {
-                    let prevpoint = {
-                        x: layerN * layerSpacing,
-                        y: (1+wN) * weightSpacing
-                    }
+                    let prevpoint = (net.layers[layerN -1].nodes[wN] as any).point;
                     c.beginPath();
 
                     let weightval_rel = Math.round((w / maxweight) * 255);
@@ -295,9 +308,27 @@ function loadJSON(ref:string, cb:(response:string)=>any) {
     xobj.send(null);
 }
 
+function getNodesPerLayer(net:Netfile['iterations'][''] & {[k:string]:any}):number[] {
+    let out = [];
+    for (let l of net.layers) { out.push(l.nodes.length); }
+    return out;
+}
+
 function reload_netfile() {
     loadJSON(netfile_name, (r) => {
-        net = JSON.parse(r);
+        netfile = JSON.parse(r);
+       
+        let isolated_net = netfile.iterations[net_name];
+        // Gotta add activation
+        net = {
+            activation_fn: (i)=> { return (i > 0 ? i : 0); },
+            derivative_activation_fn: (i) => { return (i > 0 ? 1 : 0); },
+            layers: isolated_net.layers,
+            nodes_per_layer: getNodesPerLayer(isolated_net),
+            training_metadata: isolated_net.training_metadata
+        }
+
+
         console.log(net.layers[0].nodes[0].value_before_activation);
         (window as any).net_obj = net;
         setupCanvasContext(draw);
@@ -313,10 +344,11 @@ function next_netfile() {
 
 
 
-let netfile_name = 'net.json';
+let netfile_name = 'netfile.json';
+let net_name = "1";
 let urlparams = new URLSearchParams(window.location.search);
-if (urlparams.has('netfile')) {
-    netfile_name = urlparams.get('netfile') + '.json';
+if (urlparams.has('net')) {
+    net_name = urlparams.get('net')!;
 }
 
 reload_netfile();

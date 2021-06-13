@@ -7,3 +7,5 @@ node_modules
 archive
 
 viewer/netfile*.json
+
+temp_netfiles
