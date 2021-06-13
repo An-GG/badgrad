@@ -3,7 +3,7 @@ type Neuron = {
     value: number
     value_before_activation: number
     bias: number
-    input_layer_weights?: number[] //first layer wont have obv
+    input_layer_weights: number[] //first layer wont have obv
 }
 
 type Layer = {
@@ -25,6 +25,60 @@ type Net = {
 
 let net:Net;
 
+
+function calc_net_a0ada8b(net:Net, input:LayerValues, modifyOriginal?:boolean):Net {
+    
+    // NodeValue = avn_fn( NodeBias + (for each PNode in PrevLayer: PNode_k.value * Weight_k  /  #_of_Weights) )
+    
+    let isolated_net:Net = JSON.parse(JSON.stringify(net));
+
+    // Gotta add activation
+    isolated_net = {
+        activation_fn: (i)=> { return (i > 0 ? i : 0); },
+        derivative_activation_fn: (i) => { return (i > 0 ? 1 : 0); },
+        layers: isolated_net.layers,
+        nodes_per_layer: isolated_net.nodes_per_layer,
+        training_metadata: isolated_net.training_metadata
+    }
+
+
+    // Calc First Layer Vals
+    for (let nodeN = 0; nodeN < isolated_net.layers[0].nodes.length; nodeN++) {
+        isolated_net.layers[0].nodes[nodeN].value_before_activation = isolated_net.layers[0].nodes[nodeN].bias + input[nodeN];
+        let val = net.activation_fn(isolated_net.layers[0].nodes[nodeN].value_before_activation);
+        isolated_net.layers[0].nodes[nodeN].value = val;
+    } 
+
+    // Calculate Everything Else
+    let layerN = 0;
+    for (let layer of isolated_net.layers) {
+        
+        // Skip first layer
+        if (layerN == 0) { layerN++; continue; }
+        let prevLayer = isolated_net.layers[layerN - 1];
+
+        let nodeN = 0;
+        for (let node of layer.nodes) {
+            
+            // Sum weight/node from prev layer 
+            let weightedSum = 0;
+
+            let wN = 0;
+            for (let w of node.input_layer_weights) {
+                weightedSum += (w * prevLayer.nodes[wN].value) / prevLayer.nodes.length;    
+                wN++;
+            }
+
+            isolated_net.layers[layerN].nodes[nodeN].value_before_activation = node.bias + weightedSum; 
+            isolated_net.layers[layerN].nodes[nodeN].value = net.activation_fn( node.bias + weightedSum ); 
+            nodeN++;
+        }
+        layerN++;
+    }
+
+    if (modifyOriginal) { net.layers = isolated_net.layers; }    
+    return isolated_net;
+}
 
 
 function sigmoid(x:number):number {

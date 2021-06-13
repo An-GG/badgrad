@@ -313,7 +313,7 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
     let avg_error = sum_scalar_error / training_data.length;
 
     let avg = average_grads(calculated_grads);
-    let applied_grad_net = apply_gradient(net, avg, 0.2) as Net & { training_metadata:TrainingMetadata };    
+    let applied_grad_net = apply_gradient(net, avg, 0.01) as Net & { training_metadata:TrainingMetadata };    
     applied_grad_net.training_metadata = {
         error: avg_error
     } 
