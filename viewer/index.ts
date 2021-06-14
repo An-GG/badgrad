@@ -292,7 +292,7 @@ function getNormalizedList(l:number[], customRange?:Partial<ListRange>):number[]
 
 type Plot = { list: number[], color: string, customRange?:Partial<ListRange> }
 type Rect = {pos: {x:number, y:number}, size: {w:number, h:number}}
-function drawGraph(c:CanvasRenderingContext2D, box:Rect, plots: Plot[] ) {
+function drawGraph(c:CanvasRenderingContext2D, box:Rect, plots: Plot[], vline?:number) {
     
     c.fillStyle = 'white';
     c.fillRect(box.pos.x, box.pos.y, box.size.w, box.size.h);
@@ -302,9 +302,13 @@ function drawGraph(c:CanvasRenderingContext2D, box:Rect, plots: Plot[] ) {
         c.fillStyle = p.color;
         let vN = 0;
         for (let v of l) {
-           c.fillRect(box.pos.x + ((vN/l.length) * box.size.w), box.pos.y + box.size.h - (v * box.size.h), 1, 1);
+           c.fillRect(box.pos.x + ((vN/l.length) * box.size.w), box.pos.y + box.size.h - (v * box.size.h), 2, 2);
            vN++;
         }
+    }
+    if (typeof vline == 'number') {
+        c.fillStyle = 'red';
+        c.fillRect(box.pos.x + (vline * box.size.w), box.pos.y, 2, box.size.h);
     }
 
 }
@@ -402,7 +406,7 @@ function reload_netfile() {
                 }
                 
                 drawNet(c);
-                drawGraph(c, graphbox, plots);
+                drawGraph(c, graphbox, plots, current_net_index / net_names.length);
 
             });
 
