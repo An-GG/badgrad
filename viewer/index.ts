@@ -351,9 +351,42 @@ function next_netfile(fromSlider?:boolean) {
     reload_netfile();
 }
 
-function sliderMove() {
-    current_net_index = parseInt(slider.value) - 1;
-    next_netfile(true);
+function sliderMove(to?:number) {
+    if (typeof to == 'number') {
+        current_net_index = to - 1;
+        if (is_playing) {
+            if (to >= net_names.length) {
+                pause();
+                return;
+            }
+        }
+    } else {
+        if (is_playing) { return; }
+        pause();
+        current_net_index = parseInt(slider.value) - 1;
+    }
+    next_netfile(typeof to != 'number');
+}
+
+let fps = 30;
+let pb_rate = 60;
+let time = 0;
+let is_playing = false;
+let pb_interval:NodeJS.Timeout;
+function play() {
+    pause();
+    is_playing = true;
+    time = Math.round(pb_rate / fps) * current_net_index;
+    pb_interval = setInterval(()=>{
+        time += (pb_rate / fps);
+        sliderMove(Math.round(time));
+        console.log(time);
+    }, (1000) / fps); 
+}
+
+function pause() {
+    clearInterval(pb_interval);
+    is_playing = false;
 }
 
 let netfile_name = 'netfile.json';
@@ -362,6 +395,7 @@ let urlparams = new URLSearchParams(window.location.search);
 if (urlparams.has('net')) {
     net_name = urlparams.get('net')!;
 }
+
 let net_names:string[] = [];
 let current_net_index = 0;
 let slider = window.document.getElementById('slider') as HTMLInputElement;

@@ -6,7 +6,7 @@
     </head>
     <body style="width:100%; height:100%; margin:0; padding:0; border:none;"> 
 
-        <div style="
+        <div class="uibox" style="
             pointer-events: none; 
             position:fixed; 
             top:0; left:0; bottom:0; right:0; 
@@ -16,12 +16,17 @@
             <div class="slidecontainer" style="pointer-events: auto;">
                 <input id="slider" type="range" min="0" max="1" value="0" class="slider" id="myRange" oninput="sliderMove()">
             </div>
+            <div style="pointer-events: auto;">
+                <button onclick="play()">Play</button>
+                <button onclick="pause()">Pause</button>
+            </div>
         </div>
         <canvas id="canvas" style="display:block; background:black; margin:0; padding:0; border:none; width:100%; height:100%;"></canvas>
         <script src="index.js"></script>
     </body>
 
     <style>
+
         .slidecontainer {
             position: fixed;
             bottom: 0;

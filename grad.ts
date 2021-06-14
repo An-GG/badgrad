@@ -380,15 +380,34 @@ function maxIndex(arr:number[]):number {
     }
     return ind;
 }
+type TrainingArgs = { startWithNet?:string }
+function getArgs(): TrainingArgs {
+    let out:TrainingArgs = {}; 
+    for (let a of process.argv) {
+        if (a.startsWith('--startFrom=')) {
+            out.startWithNet = a.substring('--startFrom='.length);
+        }
+    }
+    return out;
+}
 
 function TRAIN_TEST() {
-    
+   
+    let args = getArgs();
+
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
         nodes_per_layer: [7, 4, 4, 3],
         init_fn: (i)=>{ return (Math.random() - 0.5) }
     });
+
+    if (args.startWithNet) {
+        let n:Net = JSON.parse(fs.readFileSync(args.startWithNet).toString());
+        for (let key in n) {
+            (newnet as any)[key] = (n as any)[key];
+        }
+    }      
 
 
     let training = [
