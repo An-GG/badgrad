@@ -169,7 +169,8 @@ function apply_gradient(net:Net, grad:NetGradient, learnRate:number):Net {
 type TrainingDataBatch = { inputLayer: LayerValues, outputLayer: LayerValues }[];
 
 type TrainingMetadata = {
-    error: number,
+    rms_error: number,
+    avg_error: number
 }
 
 type NodeGradient = {
@@ -235,7 +236,7 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
 
     let calculated_grads: NetGradient[] = [];
     let sum_scalar_error = 0;
-
+    let sum_avg_error = 0;
 
     for (let training_pair of training_data) {
         
@@ -252,14 +253,18 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         let currentLayerN = net.layers.length - 1;        
 
         // For final layer, PD is 2 * (difference)
-        let scalar_error = 0;
+        let local_scalar_error = 0;
+        let local_avg_error = 0;
         for (let nodeN = 0; nodeN < vector_error.length; nodeN++) {
             let diff = vector_error[nodeN];
-            scalar_error += diff * diff;
+            local_scalar_error += diff * diff;
+            local_avg_error += Math.abs(diff);
             net_grad[currentLayerN][nodeN].nodePD = 2 * diff;
         }
-        scalar_error = Math.sqrt(scalar_error);
-        sum_scalar_error += scalar_error;
+        local_scalar_error = Math.sqrt(local_scalar_error);
+        local_avg_error = local_avg_error / vector_error.length;
+        sum_scalar_error += local_scalar_error;
+        sum_avg_error += local_avg_error;
         
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
@@ -311,13 +316,15 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         calculated_grads.push(net_grad);
     }
 
-    let avg_error = sum_scalar_error / training_data.length;
+    let rms_error = sum_scalar_error / training_data.length;
+    let avg_error = sum_avg_error / training_data.length;
 
     let avg = average_grads(calculated_grads);
     let learnRate = parseFloat(getArgs().learnRate);
     let applied_grad_net = apply_gradient(net, avg, learnRate) as Net & { training_metadata:TrainingMetadata };    
     applied_grad_net.training_metadata = {
-        error: avg_error
+        rms_error: rms_error,
+        avg_error: avg_error
     } 
     return applied_grad_net;
 }
@@ -417,6 +424,25 @@ function getArgs(): TrainingArgs {
     return out;
 }
 
+
+function layer_vector_diff(l:Layer, target:number[], absolute?:boolean): number[] {
+    let out =[];
+    let i = 0;
+    for (let n of l.nodes) {
+        let diff = n.value - target[i];
+        if (absolute) { diff = Math.abs(diff); }
+        out.push(diff);  
+        i++;
+    }
+    return out;
+}
+
+function avg_vector_diff(v:number[]):number {
+    let s = 0;
+    for (let a of v) { s+=a; }
+    return s / v.length; 
+}
+
 function TRAIN_TEST() {
    
     if (fs.existsSync('temp_netfiles')) { fs.rmSync('temp_netfiles', { recursive: true }); }
@@ -427,15 +453,15 @@ function TRAIN_TEST() {
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: [7, 4, 4, 3],
+        nodes_per_layer: [7, 5, 6, 6],
         init_fn: (i:ParameterInitialzerInputs)=>{ 
             if (i.paramType == 'NodeBias') {
                 return 0;   
             } else {
                 let n_nodes = i.net.layers[0].nodes.length;
-                let kaimingInit = Math.random()*Math.sqrt(2 / n_nodes);
+                let kaimingInit = (Math.random() - 0.5)*Math.sqrt(2 / n_nodes);
                 // We have to multiply kaiming init by nnodes bc we avg node weight later one
-                return kaimingInit*n_nodes;
+                return kaimingInit;
             }
         }
     });
@@ -451,34 +477,45 @@ function TRAIN_TEST() {
     let training = [
             {
                 inputLayer: [1,0,0,0,0,0,0],
-                outputLayer: [0,1,0]
+                outputLayer: [1,0,0,0,0,0]
             },
             {
                 inputLayer: [0,0,0,0,0,0,5],
-               outputLayer: [2,0,0]
+                outputLayer: [0,1,0,0,0,0]
             },
             {
-                inputLayer: [0,0,0,0,0,0,2],
-               outputLayer: [0,1,6]
+                inputLayer: [0,0,0,0,0,1,2],
+                outputLayer: [0,0,1,0,0,0]
             },
             {
                 inputLayer: [0, 22, 8, 1, 1, 0, 3, 1],
-               outputLayer: [1,0,0]
-            }
+                outputLayer: [0,0,0,1,0,0]
+            },
+            {
+                inputLayer: [0,0,10,0,0,0,2],
+                outputLayer: [0,0,0,0,1,0]
+            },
+            {
+                inputLayer: [1,2,1,1,1,1,2],
+                outputLayer: [0,0,0,0,0,1]
+            },
     ];
 
     let netfile:Netfile = { iterations: {} };
     let err = 100;
     let n = 0;
     let t0 = (new Date()).getTime();
+    let nth_save = 0;
 
     while (true) {
         newnet = train_net(newnet, training);
-        calc_net(newnet, training[n % training.length].inputLayer, true);
-        err = parseFloat((newnet.training_metadata as any).error);
+        err = parseFloat((newnet.training_metadata as any).avg_error);
         if (n % parseInt(args.saveEveryNth) == 0) {
-            console.log(n+"   "+(newnet.training_metadata as any).error);
+//            console.log(avg_vector_diff(layer_vector_diff( newnet.layers[newnet.layers.length - 1], training[n % training.length].outputLayer, true)));
+            calc_net(newnet, training[nth_save % training.length].inputLayer, true);
+            console.log(n+"   "+(newnet.training_metadata as any).rms_error);
             save_net(newnet, n.toString());
+            nth_save++;
         }
         if (err < 0.001) {
             break;
@@ -544,7 +581,7 @@ async function TRAIN_MNIST() {
         }
         mnist_net = train_net(mnist_net, batch);
 //        save_net(mnist_net, i.toString());        
-        console.log("Iteration: "+i.toString() + " " + (mnist_net as any).training_metadata.error) + " " + (npass/(npass+nfail));
+        console.log("Iteration: "+i.toString() + " " + (mnist_net as any).training_metadata.avg_error) + " " + (npass/(npass+nfail));
     }
 
 }
@@ -571,4 +608,7 @@ TRAIN_TEST();
 //
 //  - layers with a lot of weights for each node are summing to really large, so it does not make sense to just allow the net to self adjust because you would need a very small scalar value (current is 0.05) which is not efficient for other layers
 //  - need to make contribution proportional to 1 / num_weights 
+
+
+
 //  - this will (probably?) affect derivative (wait yes this is good, rn problem is derivative for these is too high) 

@@ -17,7 +17,8 @@ type Net = {
     activation_fn: (i:number) => number,
     derivative_activation_fn: (i:number) => number,
     training_metadata: {
-        error: number
+        avg_error: number
+        rms_error: number
     }
 }
 
@@ -124,7 +125,7 @@ function scrunchPoint<P>(size: {w:number, h:number}, point:{x:number, y:number, 
 }
 
 
-function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
+function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
 
     // netfile label
@@ -262,16 +263,60 @@ function drawNet(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
     c.font = '15px Roboto Mono';
     if (chosen_ans != -1) {
         c.fillText("OUTPUT: " + chosen_ans.toString(), 20, window.innerHeight - 100);
-        c.fillText("RMSERR: " + net.training_metadata.error.toString(), 20, window.innerHeight - 50);
+        c.fillText("RMSERR: " + net.training_metadata.rms_error.toString(), 20, window.innerHeight - 75);
+        c.fillText("AVGERR: " + net.training_metadata.avg_error.toString(), 20, window.innerHeight - 50);
     }
 }
 
-
-
-function draw(c:CanvasRenderingContext2D) {
-    drawNet(c, "LINE_ONLY");
-    drawNet(c, "NODE_ONLY");
+type ListRange = {min:number, max:number};
+function getRange(list:number[]): ListRange {
+    return {
+        max: Math.max(...list),
+        min: Math.min(...list)
+    }
 }
+
+function getNormalizedList(l:number[], customRange?:Partial<ListRange>):number[] {
+    let out:number[] = [];
+    let r = getRange(l);
+    if (customRange) {
+        if (typeof customRange.min == 'number') { r.min = customRange.min }
+        if (typeof customRange.max == 'number') { r.max = customRange.max }
+    }
+    console.log(customRange);
+    for (let v of l) {
+        out.push((v-r.min) / (r.max - r.min));
+    }
+    return out;
+}
+
+type Plot = { list: number[], color: string, customRange?:Partial<ListRange> }
+type Rect = {pos: {x:number, y:number}, size: {w:number, h:number}}
+function drawGraph(c:CanvasRenderingContext2D, box:Rect, plots: Plot[] ) {
+    
+    c.fillStyle = 'white';
+    c.fillRect(box.pos.x, box.pos.y, box.size.w, box.size.h);
+    
+    for (let p of plots) {
+        let l = getNormalizedList(p.list, p.customRange);
+        c.fillStyle = p.color;
+        let vN = 0;
+        for (let v of l) {
+           c.fillRect(box.pos.x + ((vN/l.length) * box.size.w), box.pos.y + box.size.h - (v * box.size.h), 1, 1);
+           vN++;
+        }
+    }
+
+}
+
+
+
+
+function drawNet(c:CanvasRenderingContext2D) {
+    drawNet_cb(c, "LINE_ONLY");
+    drawNet_cb(c, "NODE_ONLY");
+}
+
 
 let listenersAdded = false;
 function setupCanvasContext(drawFunc:(ctx:CanvasRenderingContext2D)=>any) {
@@ -314,32 +359,67 @@ function getNodesPerLayer(net:Netfile['iterations'][''] & {[k:string]:any}):numb
     return out;
 }
 
+
+
 function reload_netfile() {
-    loadJSON(netfile_name, (r) => {
-        netfile = JSON.parse(r);
-        let isolated_net = netfile.iterations[net_name];
-        (window as any).net_obj = net;
-        (window as any).netfile_obj = netfile;
-        
-        // Gotta add activation
-        net = {
-            activation_fn: (i)=> { return (i > 0 ? i : 0); },
-            derivative_activation_fn: (i) => { return (i > 0 ? 1 : 0); },
-            layers: isolated_net.layers,
-            nodes_per_layer: getNodesPerLayer(isolated_net),
-            training_metadata: isolated_net.training_metadata
-        }
+    if (urlparams.has('livegraph')) {
+    
+    } else {
+     
+        loadJSON(netfile_name, (r) => {
+            netfile = JSON.parse(r);
+            let isolated_net = netfile.iterations[net_name];
+            (window as any).net_obj = net;
+            (window as any).netfile_obj = netfile;
+            
+            // Gotta add activation
+            net = {
+                activation_fn: (i)=> { return (i > 0 ? i : 0); },
+                derivative_activation_fn: (i) => { return (i > 0 ? 1 : 0); },
+                layers: isolated_net.layers,
+                nodes_per_layer: getNodesPerLayer(isolated_net),
+                training_metadata: isolated_net.training_metadata
+            }
+            
+            console.log(net.layers[0].nodes[0].value_before_activation);
 
-        console.log(net.layers[0].nodes[0].value_before_activation);
-        setupCanvasContext(draw);
 
-        net_names = Object.keys(netfile.iterations);
-        current_net_index = net_names.indexOf(net_name);
+            setupCanvasContext((c:CanvasRenderingContext2D) => {
+                
+                let graphsize = {w: c.canvas.width / 6, h: c.canvas.height / 8};
+                let graphbox:Rect = { pos: {x: 0, y: c.canvas.height - (graphsize.h + (c.canvas.height * 0.2))}, size:graphsize };
+                let plots:Plot[] = [];
+                let plot_colors = ['red', 'green', 'blue'];
+                let varnames = ['rms_error', 'avg_error'] as const;
+                
+                for (let net_nm in netfile.iterations) {
+                    let vN = 0;
+                    for (let v of varnames) {
+                        if (plots.length == vN) { plots.push({ list:[], color:plot_colors[vN], customRange: { min:0 } }); }
+                        plots[vN].list.push( netfile.iterations[net_nm].training_metadata[v] );
+                        vN++;
+                    }
+                }
+                
+                drawNet(c);
+                drawGraph(c, graphbox, plots);
 
-        slider.min = "0"; 
-        slider.max = net_names.length.toString();
-    });
+            });
+
+            net_names = Object.keys(netfile.iterations);
+            current_net_index = net_names.indexOf(net_name);
+
+            slider.min = "0"; 
+            slider.max = net_names.length.toString();
+        });
+
+    }
 }
+
+function drawAll(c:CanvasRenderingContext2D) {
+    drawNet(c);
+}
+
 
 function next_netfile(fromSlider?:boolean) {
     current_net_index++;
@@ -388,6 +468,10 @@ function play() {
 function pause() {
     clearInterval(pb_interval);
     is_playing = false;
+}
+function reset() {
+    var newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?net=0';
+    window.location.href = newurl;
 }
 
 let netfile_name = 'netfile.json';
