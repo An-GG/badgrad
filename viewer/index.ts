@@ -368,7 +368,7 @@ function sliderMove(to?:number) {
     next_netfile(typeof to != 'number');
 }
 
-let fps = 30;
+let fps = 60;
 let pb_rate = 60;
 let time = 0;
 let is_playing = false;
