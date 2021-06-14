@@ -416,8 +416,9 @@ function getArgs(): TrainingArgs {
 }
 
 function TRAIN_TEST() {
-    
-    fs.rmdirSync('temp_netfiles', { recursive: true; });
+   
+    if (fs.existsSync('temp_netfiles')) { fs.rmSync('temp_netfiles', { recursive: true }); }
+    if (fs.existsSync('viewer/netfile.json')) { fs.rmSync('viewer/netfile.json'); }
 
     let args = getArgs();
 
@@ -455,20 +456,27 @@ function TRAIN_TEST() {
     let netfile:Netfile = { iterations: {} };
     let err = 100;
     let n = 0;
-    
+    let t0 = (new Date()).getTime();
 
-    while (err > 0.00001) {
+    while (true) {
         newnet = train_net(newnet, training);
-        console.log(n+"   "+(newnet.training_metadata as any).error);
         calc_net(newnet, training[n % training.length].inputLayer, true);
+        err = parseFloat((newnet.training_metadata as any).error);
         if (n % parseInt(args.saveEveryNth) == 0) {
+            console.log(n+"   "+(newnet.training_metadata as any).error);
             save_net(newnet, n.toString());
         }
-//        err = parseInt((newnet.training_metadata as any).error);
+        if (err < 0.001) {
+            break;
+        }
         n++;    
     }
-    let icopy = JSON.parse(JSON.stringify(n));
+    let total_time = (new Date()).getTime() - t0;
+
     console.log(":::::MARK:::::"); 
+    console.log("LAST ITERATION: "+n);
+    console.log("FINAL ERROR:    "+err);
+    console.log("TOTAL TIME:     "+total_time);
 }
 
 
