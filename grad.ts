@@ -314,7 +314,8 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
     let avg_error = sum_scalar_error / training_data.length;
 
     let avg = average_grads(calculated_grads);
-    let applied_grad_net = apply_gradient(net, avg, 0.05) as Net & { training_metadata:TrainingMetadata };    
+    let learnRate = parseFloat(getArgs().learnRate);
+    let applied_grad_net = apply_gradient(net, avg, learnRate) as Net & { training_metadata:TrainingMetadata };    
     applied_grad_net.training_metadata = {
         error: avg_error
     } 
@@ -384,7 +385,8 @@ function maxIndex(arr:number[]):number {
 
 let args_obj = {
     startFrom: (false as string | false),
-    saveEveryNth: ("256" as string)
+    saveEveryNth: ("256" as string),
+    learnRate: ("0.01" as string)
 } as const;
 
 let supportedArgs = Object.keys(args_obj) as (keyof typeof args_obj)[];
@@ -427,7 +429,15 @@ function TRAIN_TEST() {
         derivative_activation_fn: derivative_relu,
         nodes_per_layer: [7, 4, 4, 3],
         init_fn: (i:ParameterInitialzerInputs)=>{ 
-            return (i.paramType == 'NodeBias' ? 0 : (Math.random() - 0.5)) }
+            if (i.paramType == 'NodeBias') {
+                return 0;   
+            } else {
+                let n_nodes = i.net.layers[0].nodes.length;
+                let kaimingInit = Math.random()*Math.sqrt(2 / n_nodes);
+                // We have to multiply kaiming init by nnodes bc we avg node weight later one
+                return kaimingInit*n_nodes;
+            }
+        }
     });
     
     if (args.startFrom) {
