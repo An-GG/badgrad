@@ -129,7 +129,7 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
 
             let wN = 0;
             for (let w of node.input_layer_weights) {
-                weightedSum += (w * prevLayer.nodes[wN].value) / prevLayer.nodes.length;    
+                weightedSum += (w * prevLayer.nodes[wN].value);
                 wN++;
             }
 
@@ -230,6 +230,11 @@ function average_grads(grads:NetGradient[]):NetGradient {
     return avg;
 }
 
+// TODO ensure jsonifyability
+function cp<T>(a:T):T {
+    return JSON.parse(JSON.stringify(a));
+}
+
 function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
 
     let isolated_net:Net = get_net_copy(net);
@@ -280,36 +285,47 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                     // To calculate PD, need to average this EQ across all nodes for which this node in an input, 
                     // (Link_Weight / # Nodes in this Layer) 
                     // * derivative_activation( Value before activation of destination node ) 
+                    // * value of current node
                     // * PD of destination node
                     
                     let nodePDSum = 0;
                     let nextLayerNodes = isolated_net.layers[currentLayerN + 1].nodes;
 
                     let nextLayerNodeN = 0;
+                    // TODO optimize
                     while(nextLayerNodeN < nextLayerNodes.length) {
-                        let linkWeight = nextLayerNodes[nextLayerNodeN].input_layer_weights[nodeN];
-                        let numWeights = nextLayerNodes[nextLayerNodeN].input_layer_weights.length;
-                        let nextNodePD = net_grad[currentLayerN + 1][nextLayerNodeN].nodePD;
-                        let deriv_avfn = isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation );
+                        
+                        // OUTPUT = after activation, INPUT = before
+                        
+                        // the OUTPUT of this node is multiplied by linkWeight before being added to INPUT of next node, among every other node in this layer
+                        let linkWeight = cp( nextLayerNodes[nextLayerNodeN].input_layer_weights[nodeN] )
+                        // How useful it would be for the next node's OUTPUT to increase
+                        let nextNodePD = cp( net_grad[currentLayerN + 1][nextLayerNodeN].nodePD )
+                        // this node's OUTPUT value. affects how much changing the weight of the link to next nodes will impact their INPUT
+                        let myNodeValu = cp( node.value )
+                        // by how much the next node's OUTPUT will change if the INPUT is changed
+                        let nn_dv_avfn = cp( isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation ) )
+                        // The number of other nodes that will be added to the INPUT of next node (shouldnt need this)
+                        // let numWeights = cp( nextLayerNodes[nextLayerNodeN].input_layer_weights.length )
 
-                        nodePDSum += (linkWeight / numWeights) * deriv_avfn * nextNodePD;
+                        // A partial component of this link's weight PD
+                        // how useful it would be to change this link's weight 
+                        let weightPD_comp = nn_dv_avfn * nextNodePD * myNodeValu;
+                        net_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += cp( weightPD_comp )
+
+                        // how useful it would be to change the OUTPUT of this node
+                        node_grad.nodePD += cp( nn_dv_avfn * nextNodePD * linkWeight )
                         
                         nextLayerNodeN++;
                     }
-                    node_grad.nodePD = (nodePDSum / nextLayerNodeN);
                 }
 
+                // by how much this node's OUTPUT will change if the INPUT is changed
+                let my_dv_avfn = cp( isolated_net.derivative_activation_fn( node.value_before_activation ) )
+                
                 // Calculate Bias Grad for each node in this layer
-                node_grad.biasPD = node_grad.nodePD * isolated_net.derivative_activation_fn( node.value_before_activation );
+                node_grad.biasPD = cp( node_grad.nodePD * my_dv_avfn);
 
-                // Calculate Weight Grad
-                for (let wN = 0; wN < node.input_layer_weights.length; wN++) {
-                    let num_weights = node.input_layer_weights.length;
-                    let wgrad = (isolated_net.layers[currentLayerN - 1].nodes[wN].value / num_weights) 
-                                * isolated_net.derivative_activation_fn( node.value_before_activation ) 
-                                * node_grad.nodePD;
-                    node_grad.weightsPD[wN] = wgrad;
-                }
             }
             currentLayerN--;
         }
@@ -453,15 +469,15 @@ function TRAIN_TEST() {
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: [7, 5, 6, 6],
+        nodes_per_layer:  [7, 4, 4, 3],
         init_fn: (i:ParameterInitialzerInputs)=>{ 
             if (i.paramType == 'NodeBias') {
                 return 0;   
             } else {
                 let n_nodes = i.net.layers[0].nodes.length;
-                let kaimingInit = (Math.random() - 0.5)*Math.sqrt(2 / n_nodes);
-                // We have to multiply kaiming init by nnodes bc we avg node weight later one
-                return kaimingInit * n_nodes;
+                let kaimingInit = (Math.random())*Math.sqrt(2 / n_nodes);
+                
+                return kaimingInit;
             }
         }
     });
@@ -477,27 +493,19 @@ function TRAIN_TEST() {
     let training = [
             {
                 inputLayer: [1,0,0,0,0,0,0],
-                outputLayer: [1,0,0,0,0,0]
+                outputLayer: [0,1,0]
             },
             {
                 inputLayer: [0,0,0,0,0,0,5],
-                outputLayer: [0,1,0,0,0,0]
+               outputLayer: [2,0,0]
             },
             {
-                inputLayer: [0,0,0,0,0,1,2],
-                outputLayer: [0,0,1,0,0,0]
+                inputLayer: [0,2,0,0,0,0,0],
+               outputLayer: [3,0,1]
             },
             {
-                inputLayer: [0, 22, 8, 1, 1, 0, 3, 1],
-                outputLayer: [0,0,0,1,0,0]
-            },
-            {
-                inputLayer: [0,0,10,0,0,0,2],
-                outputLayer: [0,0,0,0,1,0]
-            },
-            {
-                inputLayer: [1,2,1,1,1,1,2],
-                outputLayer: [0,0,0,0,0,1]
+                inputLayer: [0,0,0,0,0,0,2],
+               outputLayer: [0,1,6]
             },
     ];
 
