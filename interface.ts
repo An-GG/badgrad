@@ -8,6 +8,7 @@ export type MetadataTypes = {
 
 export class MnistReader<T extends ("IMAGES" | "LABELS")> {
 
+    public length:number;
     public setType: T;
     public metadata: MetadataTypes[T]; 
 
@@ -48,6 +49,7 @@ export class MnistReader<T extends ("IMAGES" | "LABELS")> {
             mdref.length = this.readForward(4);
             this.bytesPerObject = 1;
         }
+        this.length = this.metadata.length;
         this.headerOffset = JSON.parse(JSON.stringify(this.byteIndex));
     }
 
@@ -117,4 +119,3 @@ function printNth(n:number, to?:number) {
     }
 }
 
-printNth(0);

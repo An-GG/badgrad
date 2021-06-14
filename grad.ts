@@ -40,7 +40,7 @@ function new_net(cfg:NetConfig & { init_fn: (inputs:ParameterInitialzerInputs)=>
         layers: [],
         nodes_per_layer:cfg.nodes_per_layer,
         activation_fn:cfg.activation_fn,
-        derivative_activation_fn:cfg.derivative_activation_fn 
+        derivative_activation_fn:cfg.derivative_activation_fn,
     }
     let layerN = 0;
     for (let numnodes of cfg.nodes_per_layer) {
@@ -409,7 +409,10 @@ function maxIndex(arr:number[]):number {
 let args_obj = {
     startFrom: (false as string | false),
     saveEveryNth: ("256" as string),
-    learnRate: ("0.01" as string)
+    learnRate: ("0.01" as string),
+    untilRMSError: ("0.001" as string),
+    batchSize: ("50" as string),
+    batchOrder: ("sequential (choose 'random' or 'sequential')" as 'random' | 'sequential')
 } as const;
 
 let supportedArgs = Object.keys(args_obj) as (keyof typeof args_obj)[];
@@ -420,8 +423,11 @@ for (let k in args_obj) {
     supportedArgsStr+= k.padStart(15) + '  default_value=' + args_obj[k as keyof TrainingArgs] + '\n';
 }
 
+export type DeepWritable<T> = { -readonly [P in keyof T]: DeepWritable<T[P]> };
+
 function getArgs(): TrainingArgs {
-    let out:TrainingArgs = JSON.parse(JSON.stringify(args_obj));
+    let out:DeepWritable<TrainingArgs> = JSON.parse(JSON.stringify(args_obj));
+    
 
     for (let a of process.argv.splice(2)) {
         // Verify correctness
@@ -437,6 +443,21 @@ function getArgs(): TrainingArgs {
         (out as any)[a.substring(2, currentArg.length-1)] = a.substring(currentArg.length);
         
     }
+    
+    // No whitespace in args, take first element of whitespace
+    for (let aN in out) {
+        let argN = aN as (keyof typeof out);
+        let val = out[argN];
+        if (typeof val == 'string') {
+            if (argN == 'batchOrder') {
+                out[argN] = val.startsWith('sequential') ? 'sequential' : 'random';
+            } else {
+                out[argN] = val.split(' ')[0];
+            }
+        }
+    }
+                                        
+    
     return out;
 }
 
@@ -547,63 +568,105 @@ function TRAIN_TEST() {
     console.log("TOTAL TIME:     "+total_time);
 }
 
+function TRAIN_MNIST() {
 
+    // Timer Start
+    let t0 = (new Date()).getTime();
 
+    if (fs.existsSync('temp_netfiles')) { fs.rmSync('temp_netfiles', { recursive: true }); }
+    if (fs.existsSync('viewer/netfile.json')) { fs.rmSync('viewer/netfile.json'); }
 
-async function TRAIN_MNIST() {
-    
-    let mnist_net = new_net({
+    let args = getArgs();
+
+    let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: [784, 32, 10],
-        init_fn: (i)=>{ return (Math.random() - 0.5) }
-    });
-        
-
-    let imgreader = await MnistReader.getReader("TRAINING", "IMAGES");
-    let lblreader = await MnistReader.getReader("TRAINING", "LABELS");
-
-    let total_iterations = 1000;
-    let batch_size = 60;
-
-    let label = lblreader.next();
-    let img = imgreader.next();
-
-//    save_net(mnist_net, "0");        
-    
-
-    for (let i = 1; i < total_iterations; i++) {
-        let batch: TrainingDataBatch = [];        
-
-        let npass = 0;
-        let nfail = 0;
-    
-        for (let b = 0; b < batch_size; b++) {
-
-            label = lblreader.next();
-            img = imgreader.next();
-
-            let result = calc_net(mnist_net, img);
-            let chosen = maxIndex(result);
-            if (chosen == label) { npass++; } else { nfail++; }
-
-            let outlayer = [0,0,0,0,0,0,0,0,0,0];
-            outlayer[label] = 1;
-                    
-            batch.push({
-                inputLayer: img,
-                outputLayer: outlayer
-            });
-            
+        nodes_per_layer:  [784, 32, 10],
+        init_fn: (i:ParameterInitialzerInputs)=>{ 
+            if (i.paramType == 'NodeBias') {
+                return 0;   
+            } else {
+                let n_nodes = i.net.layers[0].nodes.length;
+                let kaimingInit = (Math.random())*Math.sqrt(2 / n_nodes);
+                
+                return kaimingInit;
+            }
         }
-        mnist_net = train_net(mnist_net, batch);
-//        save_net(mnist_net, i.toString());        
-        console.log("Iteration: "+i.toString() + " " + (mnist_net as any).training_metadata.avg_error) + " " + (npass/(npass+nfail));
+    });
+    
+    if (args.startFrom) {
+        let n:Net = JSON.parse(fs.readFileSync(args.startFrom).toString());
+        for (let key in n) {
+            (newnet as any)[key] = (n as any)[key];
+        }
     }
+
+    let img_reader = new MnistReader("TRAINING", "IMAGES");
+    let lbl_reader = new MnistReader("TRAINING", "LABELS");    
+
+    function get_nth_databatch(n:number): TrainingDataBatch {
+        let out:TrainingDataBatch = [];
+        
+        for (let i = 0; i < parseInt(args.batchSize); i++) {
+            let pos:number;
+            if (args.batchOrder == 'sequential') {
+                pos = n * parseInt(args.batchSize);
+            } else {
+                pos = Math.random() * (lbl_reader.length - 1);
+            }
+            img_reader.setHeadPosition(pos);
+            lbl_reader.setHeadPosition(pos);
+            let outlayer = [0,0,0,0,0,0,0,0,0,0];
+            outlayer[lbl_reader.next()] = 1;
+            out.push({ inputLayer: img_reader.next(), outputLayer: outlayer });
+        }
+
+        return out;
+    }
+
+    let netfile:Netfile = { iterations: {} };
+    let batchN = 0;
+    let nth_save = 0;
+    let err = 0;
+    let prev_saved_err = 0;
+    
+    while (true) {
+        let batch = get_nth_databatch(batchN);
+        newnet = train_net(newnet, batch);
+        if (batchN % parseInt(args.saveEveryNth) == 0) {
+            calc_net(newnet, batch[nth_save % batch.length].inputLayer, true);
+
+            let log = 
+                    batchN.toString().padStart(10, "0") +
+                    "    " +
+                    (newnet.training_metadata as any).rms_error.toString().padEnd(24, "0") +
+                    "    " +
+                    Math.abs(prev_saved_err - err).toString().padEnd(24, "0") +
+                    "    " +
+                    (Math.sign(prev_saved_err - err) == 1 ? '+' : '-')
+                    ;
+
+            save_net(newnet, batchN.toString());
+            prev_saved_err = cp( err );
+            nth_save++;
+            console.log(log);
+        }
+        if (err < parseInt(args.untilRMSError)) { break; }
+        batchN++;
+    }
+
+    let total_time = (new Date()).getTime() - t0;
+
+    console.log(":::::MARK:::::"); 
+    console.log("LAST ITERATION: "+batchN);
+    console.log("FINAL ERROR:    "+err);
+    console.log("TOTAL TIME:     "+total_time);
 
 }
 
-TRAIN_TEST();
+
+
+TRAIN_MNIST();
 
 // TODO Output can currently only be positive due to relu, 
 //
