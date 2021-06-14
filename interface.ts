@@ -1,16 +1,20 @@
 import fs from 'fs';
 import { promisify } from 'util';
 
+export type MetadataTypes = {
+    LABELS: {magicN:number, length:number},
+    IMAGES: {magicN:number, length:number, res: {x:number, y:number, n_pixels:number} }
+}
 
-export class MnistReader<T extends "LABELS" | "IMAGES"> {
+export class MnistReader<T extends ("IMAGES" | "LABELS")> {
 
     public setType: T;
-    public metadata: T extends "LABELS" ? 
-        {magicN:number, length:number} : 
-        {magicN:number, length:number, res: {x:number, y:number, n_pixels:number} } = {} as any;
+    public metadata: MetadataTypes[T]; 
+
     private data:Buffer;
     private byteIndex = 0;
-
+    private headerOffset:number;
+    private bytesPerObject:number;
     private fpaths = {
         "REL":"mnist/",
         "TRAINING": {
@@ -23,11 +27,31 @@ export class MnistReader<T extends "LABELS" | "IMAGES"> {
         }
     } as const;
 
-    private constructor(set: "TRAINING" | "TEST", type: T) {
+    public constructor(set: "TRAINING" | "TEST", type: T) {
         this.setType = type;
         this.data = fs.readFileSync(this.fpaths.REL + this.fpaths[set][type]);
+        this.metadata = {} as any;
+        if (type == 'IMAGES') {
+            let mdref = this.metadata as MetadataTypes['IMAGES'];
+            mdref.magicN = this.readForward(4);
+            mdref.length = this.readForward(4);
+            mdref.res = {
+                y: this.readForward(4),
+                x: this.readForward(4),
+                n_pixels: 0
+            }
+            mdref.res.n_pixels = mdref.res.y * mdref.res.x;
+            this.bytesPerObject = mdref.res.n_pixels;
+        } else {
+            let mdref = this.metadata as MetadataTypes['LABELS'];
+            mdref.magicN = this.readForward(4);
+            mdref.length = this.readForward(4);
+            this.bytesPerObject = 1;
+        }
+        this.headerOffset = JSON.parse(JSON.stringify(this.byteIndex));
     }
-    
+
+    /** Read next n bytes and return as BE int **/    
     private readForward(nBytes: 1 | 4):number {
         this.byteIndex += nBytes;
         if (nBytes == 1) {
@@ -37,34 +61,7 @@ export class MnistReader<T extends "LABELS" | "IMAGES"> {
         } 
     }
 
-    public static async getReader<SetType extends "LABELS" | "IMAGES">(set: "TRAINING" | "TEST", type: SetType):Promise<MnistReader<SetType>> {
-        let r = new MnistReader<SetType>(set, type);
-
-        await r.setup();
-        
-
-        
-        (r as MnistReader<"LABELS">).metadata = {
-            magicN: r.readForward(4),
-            length: r.readForward(4)
-        }
-        if (type == "IMAGES") {
-            (r as MnistReader<"IMAGES">).metadata.res = {
-                y: r.readForward(4),
-                x: r.readForward(4),
-                n_pixels:0
-            };
-            
-            (r as MnistReader<"IMAGES">).metadata.res.n_pixels = 
-                (r as MnistReader<"IMAGES">).metadata.res.x * (r as MnistReader<"IMAGES">).metadata.res.y;
-        }
-        console.log(r.metadata);
-        return r;
-    }
-
-    private async setup() {
-    }
-
+    /** Automatically read and return Label or Image data **/
     public next():  T extends "LABELS" ? number : number[] {
         if (this.setType == "LABELS") {
             return (this.readForward(1)) as any;
@@ -78,6 +75,15 @@ export class MnistReader<T extends "LABELS" | "IMAGES"> {
         }
     }
 
+    /** Move the current index to some position (nth Label/Image) **/
+    public setHeadPosition(n:number) {
+        this.byteIndex = this.headerOffset + (this.bytesPerObject * n);
+    }
+
+    /** Get current head position (nth Label/Image) **/
+    public getHeadPosition():number {
+        return (this.byteIndex - this.headerOffset) / this.bytesPerObject;
+    }
 
     public vectorToASCII(v: number[]):string {
         const ASCIIScale = " .:-=+*#%@".split('');
@@ -94,15 +100,14 @@ export class MnistReader<T extends "LABELS" | "IMAGES"> {
     } 
 }
 
-async function printNth(n:number, to?:number) {
-    let img = await MnistReader.getReader("TRAINING", "IMAGES");
-    let lbl = await MnistReader.getReader("TRAINING", "LABELS");
-    let i = 0;
-    while (i < n) {
-        img.next();
-        lbl.next();
-        i++;    
-    }
+function printNth(n:number, to?:number) {
+    let img = new MnistReader("TRAINING", "IMAGES");
+    let lbl = new MnistReader("TRAINING", "LABELS");
+    
+    img.setHeadPosition(n);
+    lbl.setHeadPosition(n);
+    
+    let i = n;
     let end = to ? to : n+1;
     while (i < end) {
         let x = img.vectorToASCII(img.next());
@@ -112,5 +117,4 @@ async function printNth(n:number, to?:number) {
     }
 }
 
-
-//printNth(160, 175);
+printNth(0);
