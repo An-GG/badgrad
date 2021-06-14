@@ -1,4 +1,4 @@
-
+#!/usr/bin/env node
 import * as readline from "readline";
 import { SIGWINCH } from "constants";
 import fs from 'fs';
@@ -460,6 +460,10 @@ function TRAIN_TEST() {
             {
                 inputLayer: [0,0,0,0,0,0,2],
                outputLayer: [0,1,6]
+            },
+            {
+                inputLayer: [0, 22, 8, 1, 1, 0, 3, 1],
+               outputLayer: [1,0,0]
             }
     ];
 
