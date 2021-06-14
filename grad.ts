@@ -461,7 +461,7 @@ function TRAIN_TEST() {
                 let n_nodes = i.net.layers[0].nodes.length;
                 let kaimingInit = (Math.random() - 0.5)*Math.sqrt(2 / n_nodes);
                 // We have to multiply kaiming init by nnodes bc we avg node weight later one
-                return kaimingInit;
+                return kaimingInit * n_nodes;
             }
         }
     });
@@ -506,15 +506,24 @@ function TRAIN_TEST() {
     let n = 0;
     let t0 = (new Date()).getTime();
     let nth_save = 0;
+    let prev_err = 0;
+
 
     while (true) {
         newnet = train_net(newnet, training);
-        err = parseFloat((newnet.training_metadata as any).avg_error);
+        err = parseFloat((newnet.training_metadata as any).rms_error);
         if (n % parseInt(args.saveEveryNth) == 0) {
 //            console.log(avg_vector_diff(layer_vector_diff( newnet.layers[newnet.layers.length - 1], training[n % training.length].outputLayer, true)));
             calc_net(newnet, training[nth_save % training.length].inputLayer, true);
-            console.log(n+"   "+(newnet.training_metadata as any).rms_error);
+            
+            console.log(n.toString().padStart(10, "0")+"   "+
+                        (newnet.training_metadata as any).rms_error.toString().padEnd(24, "0")+"    "+
+                        Math.abs(prev_err -  err).toString().padEnd(24, "0")+" "+
+                        (Math.sign(prev_err - err) == 1 ? '+' : '-') 
+            );
+
             save_net(newnet, n.toString());
+            prev_err = JSON.parse(JSON.stringify(err));
             nth_save++;
         }
         if (err < 0.001) {
