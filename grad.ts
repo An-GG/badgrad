@@ -381,12 +381,27 @@ function maxIndex(arr:number[]):number {
     return ind;
 }
 type TrainingArgs = { startWithNet?:string }
+
+let supportedArgs = [
+    '--startFrom='
+]
+
 function getArgs(): TrainingArgs {
     let out:TrainingArgs = {}; 
-    for (let a of process.argv) {
+    
+    for (let a of process.argv.splice(2)) {
+        // Verify correctness
+        let supported = true; 
+        for (let spArg of supportedArgs) {
+            if (!a.startsWith(spArg)) { supported = false; }
+        }        
+        if (!supported) { throw new Error('Unsupported Argument: '+a+'\n\nSupported Args: \n'+JSON.stringify(supportedArgs)); }
+
+
         if (a.startsWith('--startFrom=')) {
             out.startWithNet = a.substring('--startFrom='.length);
         }
+
     }
     return out;
 }
