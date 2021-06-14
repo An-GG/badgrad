@@ -380,45 +380,57 @@ function maxIndex(arr:number[]):number {
     }
     return ind;
 }
-type TrainingArgs = { startWithNet?:string }
 
-let supportedArgs = [
-    '--startFrom='
-]
+
+let args_obj = {
+    startFrom: (false as string | false),
+    saveEveryNth: ("256" as string)
+} as const;
+
+let supportedArgs = Object.keys(args_obj) as (keyof typeof args_obj)[];
+type TrainingArgs = typeof args_obj; 
+
+let supportedArgsStr = "Supported Args:\n";
+for (let k in args_obj) {
+    supportedArgsStr+= k.padStart(15) + '  default_value=' + args_obj[k as keyof TrainingArgs] + '\n';
+}
 
 function getArgs(): TrainingArgs {
-    let out:TrainingArgs = {}; 
-    
+    let out:TrainingArgs = JSON.parse(JSON.stringify(args_obj));
+
     for (let a of process.argv.splice(2)) {
         // Verify correctness
-        let supported = true; 
-        for (let spArg of supportedArgs) {
-            if (!a.startsWith(spArg)) { supported = false; }
-        }        
-        if (!supported) { throw new Error('Unsupported Argument: '+a+'\n\nSupported Args: \n'+JSON.stringify(supportedArgs)); }
-
-
-        if (a.startsWith('--startFrom=')) {
-            out.startWithNet = a.substring('--startFrom='.length);
+        let supported = false; 
+        let currentArg:string="";
+        for (let sp of supportedArgs) {
+            let spArg = '--'+sp+'=';
+            if (a.startsWith(spArg)) { supported = true; currentArg=spArg; }
         }
 
+        if (!supported) { throw new Error('Unsupported Argument: '+a+'\n\n'+supportedArgsStr); }
+
+        (out as any)[a.substring(2, currentArg.length-1)] = a.substring(currentArg.length);
+        
     }
     return out;
 }
 
 function TRAIN_TEST() {
-   
+    
+    fs.rmdirSync('temp_netfiles', { recursive: true; });
+
     let args = getArgs();
 
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
         nodes_per_layer: [7, 4, 4, 3],
-        init_fn: (i)=>{ return (Math.random() - 0.5) }
+        init_fn: (i:ParameterInitialzerInputs)=>{ 
+            return (i.paramType == 'NodeBias' ? 0 : (Math.random() - 0.5)) }
     });
-
-    if (args.startWithNet) {
-        let n:Net = JSON.parse(fs.readFileSync(args.startWithNet).toString());
+    
+    if (args.startFrom) {
+        let n:Net = JSON.parse(fs.readFileSync(args.startFrom).toString());
         for (let key in n) {
             (newnet as any)[key] = (n as any)[key];
         }
@@ -443,11 +455,13 @@ function TRAIN_TEST() {
     let netfile:Netfile = { iterations: {} };
     let err = 100;
     let n = 0;
+    
+
     while (err > 0.00001) {
         newnet = train_net(newnet, training);
         console.log(n+"   "+(newnet.training_metadata as any).error);
         calc_net(newnet, training[n % training.length].inputLayer, true);
-        if (n % 256 == 0) {
+        if (n % parseInt(args.saveEveryNth) == 0) {
             save_net(newnet, n.toString());
         }
 //        err = parseInt((newnet.training_metadata as any).error);

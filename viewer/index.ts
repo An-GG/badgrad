@@ -368,11 +368,12 @@ function sliderMove(to?:number) {
     next_netfile(typeof to != 'number');
 }
 
-let fps = 60;
-let pb_rate = 60;
+let fps = 30;
+let pb_rate = 30;
 let time = 0;
 let is_playing = false;
 let pb_interval:NodeJS.Timeout;
+
 function play() {
     pause();
     is_playing = true;
