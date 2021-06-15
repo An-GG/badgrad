@@ -16,7 +16,7 @@ type Net = {
     nodes_per_layer: number[],
     activation_fn: (i:number) => number,
     derivative_activation_fn: (i:number) => number,
-    training_metadata: {
+    training_metadata?: {
         avg_error: number
         rms_error: number
     }
@@ -200,7 +200,7 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
                     lastLayerVals.push(node.value);
                 }
                 // first layer vals
-                if (layerN == 0) {
+                if (layerN == 0 && layer.nodes.length < 100) {
                     c.fillStyle = 'white';
                     c.font = (point.size / 1.5) + "px 'Roboto Mono'";
                     c.fillText(node.value.toFixed(2), point.x - point.size * 3, point.y + (point.size/6));
@@ -263,6 +263,7 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
     c.font = '15px Roboto Mono';
     if (chosen_ans != -1) {
         c.fillText("OUTPUT: " + chosen_ans.toString(), 20, window.innerHeight - 100);
+        if (!net.training_metadata) { return; }
         c.fillText("RMSERR: " + net.training_metadata.rms_error.toString(), 20, window.innerHeight - 75);
         c.fillText("AVGERR: " + net.training_metadata.avg_error.toString(), 20, window.innerHeight - 50);
     }
@@ -397,10 +398,12 @@ function reload_netfile() {
                 let varnames = ['rms_error', 'avg_error'] as const;
                 
                 for (let net_nm in netfile.iterations) {
+                    let md = netfile.iterations[net_nm].training_metadata;
+                    if (!md) { continue; }
                     let vN = 0;
                     for (let v of varnames) {
                         if (plots.length == vN) { plots.push({ list:[], color:plot_colors[vN], customRange: { min:0 } }); }
-                        plots[vN].list.push( netfile.iterations[net_nm].training_metadata[v] );
+                        plots[vN].list.push( md[v] );
                         vN++;
                     }
                 }

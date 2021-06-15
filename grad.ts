@@ -20,8 +20,8 @@ export type LayerValues = Node['value'][];
 export type Net = {
     layers: Layer[],
     nodes_per_layer: number[],
-    activation_fn: (i:number) => number,
-    derivative_activation_fn: (i:number) => number,
+    activation_fn: (i:number, pos:{ lN:number, nN:number }, nodes_per_layer:number[]) => number,
+    derivative_activation_fn: (i:number, pos:{ lN:number, nN:number }, nodes_per_layer:number[]) => number,
     training_metadata?:TrainingMetadata
 }
 
@@ -52,7 +52,7 @@ function new_net(cfg:NetConfig & { init_fn: (inputs:ParameterInitialzerInputs)=>
                 input_layer_weights: [],
                 value:0
             }
-            newnode.value = cfg.activation_fn(newnode.value_before_activation);
+            newnode.value = cfg.activation_fn(newnode.value_before_activation, { lN:layerN, nN:nodeN }, cfg.nodes_per_layer);
             if (layerN > 0) { 
                 for (let weightN = 0; weightN < cfg.nodes_per_layer[layerN - 1]; weightN++) {
                     newnode.input_layer_weights.push(
@@ -102,14 +102,13 @@ function get_net_copy(net:Net):Net {
 // TODO assumes input is non-negative ?? or does it work for neg?
 function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] {
     
-    // NodeValue = avn_fn( NodeBias + (for each PNode in PrevLayer: PNode_k.value * Weight_k  /  #_of_Weights) )
     
     let isolated_net = get_net_copy(net);
 
     // Calc First Layer Vals
     for (let nodeN = 0; nodeN < isolated_net.layers[0].nodes.length; nodeN++) {
         isolated_net.layers[0].nodes[nodeN].value_before_activation = isolated_net.layers[0].nodes[nodeN].bias + input[nodeN];
-        let val = net.activation_fn(isolated_net.layers[0].nodes[nodeN].value_before_activation);
+        let val = net.activation_fn(isolated_net.layers[0].nodes[nodeN].value_before_activation, {lN:0,nN:nodeN}, isolated_net.nodes_per_layer);
         isolated_net.layers[0].nodes[nodeN].value = val;
     } 
 
@@ -134,7 +133,7 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
             }
 
             isolated_net.layers[layerN].nodes[nodeN].value_before_activation = node.bias + weightedSum; 
-            isolated_net.layers[layerN].nodes[nodeN].value = net.activation_fn( node.bias + weightedSum ); 
+            isolated_net.layers[layerN].nodes[nodeN].value = net.activation_fn( node.bias + weightedSum, {lN:layerN, nN:nodeN}, isolated_net.nodes_per_layer);
             nodeN++;
         }
         layerN++;
@@ -304,7 +303,8 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         // this node's OUTPUT value. affects how much changing the weight of the link to next nodes will impact their INPUT
                         let myNodeValu = cp( node.value )
                         // by how much the next node's OUTPUT will change if the INPUT is changed
-                        let nn_dv_avfn = cp( isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation ) )
+                        let nn_dv_avfn = cp( isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation, 
+                                                                                   { lN: currentLayerN + 1, nN:nextLayerNodeN }, isolated_net.nodes_per_layer ) )
                         // The number of other nodes that will be added to the INPUT of next node (shouldnt need this)
                         // let numWeights = cp( nextLayerNodes[nextLayerNodeN].input_layer_weights.length )
 
@@ -315,13 +315,12 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
 
                         // how useful it would be to change the OUTPUT of this node
                         node_grad.nodePD += cp( nn_dv_avfn * nextNodePD * linkWeight )
-                        
                         nextLayerNodeN++;
                     }
                 }
 
                 // by how much this node's OUTPUT will change if the INPUT is changed
-                let my_dv_avfn = cp( isolated_net.derivative_activation_fn( node.value_before_activation ) )
+                let my_dv_avfn = cp( isolated_net.derivative_activation_fn( node.value_before_activation, { lN: currentLayerN, nN:nodeN }, isolated_net.nodes_per_layer ) )
                 
                 // Calculate Bias Grad for each node in this layer
                 node_grad.biasPD = cp( node_grad.nodePD * my_dv_avfn);
@@ -408,7 +407,7 @@ function maxIndex(arr:number[]):number {
 
 let args_obj = {
     startFrom: (false as string | false),
-    saveEveryNth: ("256" as string),
+    saveEveryNth: ("32" as string),
     learnRate: ("0.01" as string),
     untilRMSError: ("0.001" as string),
     batchSize: ("50" as string),
@@ -530,8 +529,11 @@ function TRAIN_TEST() {
             },
     ];
 
+    calc_net(newnet, training[0].inputLayer, true);
+    save_net(newnet, "0");
+    
     let netfile:Netfile = { iterations: {} };
-    let err = 100;
+    let err = 0;
     let n = 0;
     let t0 = (new Date()).getTime();
     let nth_save = 0;
@@ -542,7 +544,6 @@ function TRAIN_TEST() {
         newnet = train_net(newnet, training);
         err = parseFloat((newnet.training_metadata as any).rms_error);
         if (n % parseInt(args.saveEveryNth) == 0) {
-//            console.log(avg_vector_diff(layer_vector_diff( newnet.layers[newnet.layers.length - 1], training[n % training.length].outputLayer, true)));
             calc_net(newnet, training[nth_save % training.length].inputLayer, true);
             
             console.log(n.toString().padStart(10, "0")+"   "+
@@ -551,7 +552,7 @@ function TRAIN_TEST() {
                         (Math.sign(prev_err - err) == 1 ? '+' : '-') 
             );
 
-            save_net(newnet, n.toString());
+            save_net(newnet, (n+1).toString());
             prev_err = JSON.parse(JSON.stringify(err));
             nth_save++;
         }
@@ -577,7 +578,7 @@ function TRAIN_MNIST() {
     if (fs.existsSync('viewer/netfile.json')) { fs.rmSync('viewer/netfile.json'); }
 
     let args = getArgs();
-
+    
     let newnet = new_net({
         activation_fn: relu,
         derivative_activation_fn: derivative_relu,
@@ -586,10 +587,9 @@ function TRAIN_MNIST() {
             if (i.paramType == 'NodeBias') {
                 return 0;   
             } else {
-                let n_nodes = i.net.layers[0].nodes.length;
-                let kaimingInit = (Math.random())*Math.sqrt(2 / n_nodes);
-                
-                return kaimingInit;
+                if (i.layerN < 1) { return 0; } else {
+                    return ((Math.random() - 0.5) * 2) / (i.net.nodes_per_layer[i.layerN] * i.net.nodes_per_layer[i.layerN - 1]);
+                }
             }
         }
     });
@@ -603,7 +603,10 @@ function TRAIN_MNIST() {
 
     let img_reader = new MnistReader("TRAINING", "IMAGES");
     let lbl_reader = new MnistReader("TRAINING", "LABELS");    
-
+   
+    calc_net(newnet, img_reader.next(), true); 
+    save_net(newnet, "0");
+   
     function get_nth_databatch(n:number): TrainingDataBatch {
         let out:TrainingDataBatch = [];
         
@@ -624,7 +627,6 @@ function TRAIN_MNIST() {
         return out;
     }
 
-    let netfile:Netfile = { iterations: {} };
     let batchN = 0;
     let nth_save = 0;
     let err = 0;
@@ -646,7 +648,7 @@ function TRAIN_MNIST() {
                     (Math.sign(prev_saved_err - err) == 1 ? '+' : '-')
                     ;
 
-            save_net(newnet, batchN.toString());
+            save_net(newnet, (batchN + 1).toString());
             prev_saved_err = cp( err );
             nth_save++;
             console.log(log);
@@ -667,7 +669,7 @@ function TRAIN_MNIST() {
 
 
 TRAIN_MNIST();
-
+//TRAIN_TEST();
 // TODO Output can currently only be positive due to relu, 
 //
 //  - you could normalize the training data & make negatives positive, and then make the values which are supposed to be negative
@@ -692,3 +694,9 @@ TRAIN_MNIST();
 
 
 //  - this will (probably?) affect derivative (wait yes this is good, rn problem is derivative for these is too high) 
+
+
+
+/**
+ We initialize weight with a normal distribution with mean 0 and variance std, and the ideal distribution of weight after relu should have slightly incremented mean layer by layer and variance close to 1. We can see the output is close to what we expected. The mean increment slowly and std is close to 1 in the feedforward phase. And such stability will avoid the vanishing gradient problem and exploding gradient problem in the backpropagation phase.
+**/
