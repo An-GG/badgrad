@@ -614,7 +614,6 @@ function TRAIN_MNIST() {
     
     let newnet = new_net({
         activation_fn: (i, pos, npl) => {
-            
             return relu(i); // wat last layer has no val
         },
         derivative_activation_fn: derivative_relu,
@@ -624,7 +623,7 @@ function TRAIN_MNIST() {
                 return 0;   
             } else {
                 if (i.layerN < 1) { return 0; } else {
-                    let v = Math.random() * 2;
+                    let v = (Math.random() * 2);
                     return (v * 1) / i.net.nodes_per_layer[i.layerN - 1];
                 }
             }
@@ -678,12 +677,14 @@ function TRAIN_MNIST() {
     let prev_saved_err = 0;
     
     while (true) {
+        t(1);
         let batch = get_nth_databatch(batchN, args.useSampleData == 'true');
+        t(2);
         newnet = train_net(newnet, batch);
         err = parseFloat((newnet.training_metadata as any).rms_error);
+        t(3);
         if (batchN % parseInt(args.saveEveryNth) == 0) {
             calc_net(newnet, batch[nth_save % batch.length].inputLayer, true);
-
             let log = 
                     batchN.toString().padStart(10, "0") +
                     "    " +
@@ -701,6 +702,7 @@ function TRAIN_MNIST() {
         }
         if (err < parseFloat(args.untilRMSError)) { break; }
         batchN++;
+        tlog();
     }
 
     let total_time = (new Date()).getTime() - t0;
@@ -720,6 +722,22 @@ function log(t: "gradient", v:any) {
 //            console.log(n.biasPD.toFixed(10) + " " + n.nodePD.toFixed(10));
         } 
     }
+}
+
+let laps = [] as {n:string, d:Date}[];
+function t(i:string|number) {
+    i = i.toString();
+    laps.push({n:i, d:new Date()});
+}
+function tlog() {
+    let ln = 0;
+    let dp = 0;
+    for (let l of laps) {
+        if (ln == 0) { dp=l.d.getTime(); continue; }
+        console.log(laps[ln-1]+"-"+l.n+"  "+(l.d.getTime() - dp));
+        dp=l.d.getTime();
+    }
+    laps = [];
 }
 
 TRAIN_MNIST();

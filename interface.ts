@@ -71,7 +71,7 @@ export class MnistReader<T extends ("IMAGES" | "LABELS")> {
             let v:number[] = [];
             let n_px = (this as MnistReader<"IMAGES">).metadata.res.n_pixels;
             for (let i = 0; i < n_px; i++) {
-                v.push(this.readForward(1));
+                v.push(this.readForward(1) / 255);
             }
             return v as any;
         }
