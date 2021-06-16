@@ -102,27 +102,22 @@ function get_net_copy(net:Net):Net {
 // TODO assumes input is non-negative ?? or does it work for neg?
 function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] {
     
-    
-    let isolated_net = get_net_copy(net);
-
+    let isolated_net = modifyOriginal ? net : get_net_copy(net);
     // Calc First Layer Vals
     for (let nodeN = 0; nodeN < isolated_net.layers[0].nodes.length; nodeN++) {
         isolated_net.layers[0].nodes[nodeN].value_before_activation = isolated_net.layers[0].nodes[nodeN].bias + input[nodeN];
         let val = net.activation_fn(isolated_net.layers[0].nodes[nodeN].value_before_activation, {lN:0,nN:nodeN}, isolated_net.nodes_per_layer);
         isolated_net.layers[0].nodes[nodeN].value = val;
     } 
-
     // Calculate Everything Else
     let layerN = 0;
     for (let layer of isolated_net.layers) {
-        
         // Skip first layer
         if (layerN == 0) { layerN++; continue; }
         let prevLayer = isolated_net.layers[layerN - 1];
-
         let nodeN = 0;
         for (let node of layer.nodes) {
-            
+                    
             // Sum weight/node from prev layer 
             let weightedSum = 0;
 
@@ -139,8 +134,6 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
         }
         layerN++;
     }
-
-    if (modifyOriginal) { net.layers = isolated_net.layers; }    
     return get_net_layer_vals(isolated_net, isolated_net.layers.length - 1);
 }
 
@@ -241,7 +234,7 @@ function cp<T>(a:T):T {
 
 
 function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
-
+    
     let isolated_net:Net = get_net_copy(net);
 
     let calculated_grads: NetGradient[] = [];
@@ -249,16 +242,14 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
     let sum_avg_error = 0;
 
     for (let training_pair of training_data) {
-        
         let net_grad: NetGradient = get_blank_gradient(isolated_net);
-        
+
         // Calculate net fully 
         calc_net(isolated_net, training_pair.inputLayer, true);
         let vector_error = [];
         for (let nodeN = 0; nodeN < training_pair.outputLayer.length; nodeN++) {
             vector_error.push( training_pair.outputLayer[nodeN] - isolated_net.layers[net.layers.length - 1].nodes[nodeN].value );
         }
-
         // Start at last layer and get loss (PD) for each node in last layer
         let currentLayerN = net.layers.length - 1;        
 
@@ -275,7 +266,6 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         local_avg_error = local_avg_error / vector_error.length;
         sum_scalar_error += local_scalar_error;
         sum_avg_error += local_avg_error;
-        
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
             
@@ -677,12 +667,9 @@ function TRAIN_MNIST() {
     let prev_saved_err = 0;
     
     while (true) {
-        t(1);
         let batch = get_nth_databatch(batchN, args.useSampleData == 'true');
-        t(2);
         newnet = train_net(newnet, batch);
         err = parseFloat((newnet.training_metadata as any).rms_error);
-        t(3);
         if (batchN % parseInt(args.saveEveryNth) == 0) {
             calc_net(newnet, batch[nth_save % batch.length].inputLayer, true);
             let log = 
@@ -702,7 +689,6 @@ function TRAIN_MNIST() {
         }
         if (err < parseFloat(args.untilRMSError)) { break; }
         batchN++;
-        tlog();
     }
 
     let total_time = (new Date()).getTime() - t0;
@@ -725,18 +711,38 @@ function log(t: "gradient", v:any) {
 }
 
 let laps = [] as {n:string, d:Date}[];
+let lapdiffs:number[] = [0];
+let tn = 0;
 function t(i:string|number) {
-    i = i.toString();
-    laps.push({n:i, d:new Date()});
+    laps.push({n:""+i, d:new Date()});
+    tn++;
 }
 function tlog() {
     let ln = 0;
     let dp = 0;
+    let dn = "";
     for (let l of laps) {
-        if (ln == 0) { dp=l.d.getTime(); continue; }
-        console.log(laps[ln-1]+"-"+l.n+"  "+(l.d.getTime() - dp));
+        if (ln == 0) { 
+            dp=l.d.getTime(); 
+            dn=l.n;
+            ln++; 
+            continue; 
+        }
+        let same = dn == laps[ln].n;
+        let lapn = same ? ln - 2 : ln - 1;
+        console.log(laps[lapn].n+"-"+l.n+"  "+(l.d.getTime() - dp));
+        
+        if (lapdiffs.length - 1 < ln) { lapdiffs.push(0); }
+        lapdiffs[ln]+=l.d.getTime()-dp;
+        
         dp=l.d.getTime();
+        dn=l.n;
+
+        ln++;
     }
+    console.log(lapdiffs);
+
+    ln = 0;
     laps = [];
 }
 
