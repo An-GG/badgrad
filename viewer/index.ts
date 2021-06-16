@@ -116,6 +116,35 @@ function drawImage(ops: {
 
 }
 
+function rectContains(r:Rect, p:{x:number,y:number}): boolean {
+    if (p.x >= r.pos.x && p.y >= r.pos.y) {
+        if (p.x <= r.pos.x + r.size.w && p.y <= r.pos.y + r.size.h) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+let clickTargets : {box:Rect, func:()=>void}[] = [];
+
+function addClickTarget(box: Rect, func:()=>void) {
+    
+    clickTargets.push({box:box, func:func});
+}
+
+
+function iterateClickTargets(clicked:{x:number, y:number}):boolean {
+    let hit = false;
+    for (let t of clickTargets) {
+        if (rectContains(t.box, clicked)) {
+            hit = true;
+            t.func();
+        }
+    }
+    return hit;
+}
+
 function scrunchPoint<P>(size: {w:number, h:number}, point:{x:number, y:number, [k:string]:any} & P, scrunch:{kW:number, kH:number}, anchor?:{x:number, y:number}): P {
     let out : typeof point = JSON.parse(JSON.stringify(point));
     anchor = anchor ? anchor : {x:size.w/2, y:size.h/2};
@@ -127,6 +156,7 @@ function scrunchPoint<P>(size: {w:number, h:number}, point:{x:number, y:number, 
 
 function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY") {
 
+    clickTargets = [];
 
     // netfile label
     c.fillStyle = 'white';
@@ -189,6 +219,9 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
                 }
 
                 c.ellipse(point.x, point.y, point.size, point.size, 0, 0, 2*Math.PI);
+                addClickTarget({pos:{x:point.x - (point.size / 2), y:point.y - (point.size / 2)}, size:{w:point.size,h:point.size}}, ()=>{
+                    log(node, "node");
+                });
                 c.fill();
                 c.stroke();
 
@@ -257,7 +290,6 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
 
     // chosen answer label
     let chosen_ans = maxIndex(lastLayerVals);
-    console.log(chosen_ans);
 
     c.fillStyle = 'white';
     c.font = '15px Roboto Mono';
@@ -284,7 +316,6 @@ function getNormalizedList(l:number[], customRange?:Partial<ListRange>):number[]
         if (typeof customRange.min == 'number') { r.min = customRange.min }
         if (typeof customRange.max == 'number') { r.max = customRange.max }
     }
-    console.log(customRange);
     for (let v of l) {
         out.push((v-r.min) / (r.max - r.min));
     }
@@ -303,8 +334,10 @@ function drawGraph(c:CanvasRenderingContext2D, box:Rect, plots: Plot[], vline?:n
         c.fillStyle = p.color;
         let vN = 0;
         for (let v of l) {
-           c.fillRect(box.pos.x + ((vN/l.length) * box.size.w), box.pos.y + box.size.h - (v * box.size.h), 2, 2);
-           vN++;
+            let ptbox = [box.pos.x + ((vN/l.length) * box.size.w), box.pos.y + box.size.h - (v * box.size.h), 2, 2];
+            c.fillRect(ptbox[0],ptbox[1],ptbox[2],ptbox[3]);
+            (ptbox[0],ptbox[1],ptbox[2],ptbox[3]);
+            vN++;
         }
     }
     if (typeof vline == 'number') {
@@ -386,7 +419,6 @@ function reload_netfile() {
                 training_metadata: isolated_net.training_metadata
             }
             
-            console.log(net.layers[0].nodes[0].value_before_activation);
 
 
             setupCanvasContext((c:CanvasRenderingContext2D) => {
@@ -468,7 +500,6 @@ function play() {
     pb_interval = setInterval(()=>{
         time += (pb_rate / fps);
         sliderMove(Math.round(time));
-        console.log(time);
     }, (1000) / fps); 
 }
 
@@ -507,10 +538,25 @@ function event_click(e:MouseEvent) {
         x: e.pageX,
         y: e.pageY
     }
-
-    next_netfile();
+    let hit = iterateClickTargets(pos);
+    if (!hit) { 
+        next_netfile();
+    }
 }
 
+type objtype = "node"
+function log(v:any, type?:objtype) {
+    console.log(v);
+    let out = "";
+    switch(type) {
+        case "node": 
+            let val = v as Neuron;
+            out+="===NODE===\n";
+            out+="   VALUE: "+val.value.toPrecision(10)+"\n";
+            out+="   BIAS:  "+val.bias.toPrecision(10)+"\n";
+    }
+    console.log(out);
+}
 
 
 (window as any).printImg = () => {
