@@ -132,6 +132,7 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
                 wN++;
             }
 
+
             isolated_net.layers[layerN].nodes[nodeN].value_before_activation = node.bias + weightedSum; 
             isolated_net.layers[layerN].nodes[nodeN].value = net.activation_fn( node.bias + weightedSum, {lN:layerN, nN:nodeN}, isolated_net.nodes_per_layer);
             nodeN++;
@@ -234,6 +235,11 @@ function cp<T>(a:T):T {
     return JSON.parse(JSON.stringify(a));
 }
 
+
+
+
+
+
 function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
 
     let isolated_net:Net = get_net_copy(net);
@@ -315,6 +321,7 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         node_grad.nodePD += cp( nn_dv_avfn * nextNodePD * linkWeight )
                         nextLayerNodeN++;
                     }
+                
                 }
 
                 // by how much this node's OUTPUT will change if the INPUT is changed
@@ -333,6 +340,8 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
     let avg_error = sum_avg_error / training_data.length;
 
     let avg = average_grads(calculated_grads);
+    log("gradient", avg); 
+    
     let learnRate = parseFloat(getArgs().learnRate);
     let applied_grad_net = apply_gradient(net, avg, learnRate) as Net & { training_metadata:TrainingMetadata };    
     applied_grad_net.training_metadata = {
@@ -409,7 +418,8 @@ let args_obj = {
     learnRate: ("0.01" as string),
     untilRMSError: ("0.001" as string),
     batchSize: ("50" as string),
-    batchOrder: ("sequential (choose 'random' or 'sequential')" as 'random' | 'sequential')
+    batchOrder: ("sequential (choose 'random' or 'sequential')" as 'random' | 'sequential'),
+    useSampleData: (false as string | false),
 } as const;
 
 let supportedArgs = Object.keys(args_obj) as (keyof typeof args_obj)[];
@@ -476,6 +486,26 @@ function avg_vector_diff(v:number[]):number {
     for (let a of v) { s+=a; }
     return s / v.length; 
 }
+let sample_training =  [
+            {
+                inputLayer: [1,0,0,0,0,0,0],
+                outputLayer: [0,1,0]
+            },
+            {
+                inputLayer: [0,0,0,0,0,0,5],
+               outputLayer: [2,0,0]
+            },
+            {
+                inputLayer: [0,2,0,0,0,0,0],
+               outputLayer: [3,0,1]
+            },
+            {
+                inputLayer: [0,0,0,0,0,0,2],
+               outputLayer: [0,1,6]
+            },
+    ];
+
+
 
 function TRAIN_TEST() {
    
@@ -585,16 +615,17 @@ function TRAIN_MNIST() {
     let newnet = new_net({
         activation_fn: (i, pos, npl) => {
             
-            return relu(i / (npl[pos.lN])); // wat last layer has no val
+            return relu(i); // wat last layer has no val
         },
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer:  [784, 32, 10],
+        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 32, 10],
         init_fn: (i:ParameterInitialzerInputs)=>{ 
             if (i.paramType == 'NodeBias') {
                 return 0;   
             } else {
                 if (i.layerN < 1) { return 0; } else {
-                    return ((Math.random() - 0.5) * 2) / (i.net.nodes_per_layer[i.layerN] * i.net.nodes_per_layer[i.layerN - 1]);
+                    let v = Math.random() * 2;
+                    return (v * 1) / i.net.nodes_per_layer[i.layerN - 1];
                 }
             }
         }
@@ -609,11 +640,19 @@ function TRAIN_MNIST() {
 
     let img_reader = new MnistReader("TRAINING", "IMAGES");
     let lbl_reader = new MnistReader("TRAINING", "LABELS");    
-   
-    calc_net(newnet, img_reader.next(), true); 
+
+    let all1s = [];
+    for (let i = 0; i < newnet.nodes_per_layer[0]; i++) {
+        all1s.push(1);
+    }
+    calc_net(newnet, all1s, true);
     save_net(newnet, "0");
-   
-    function get_nth_databatch(n:number): TrainingDataBatch {
+
+
+    function get_nth_databatch(n:number, useSample:boolean): TrainingDataBatch {
+        
+        if (useSample) { return sample_training; }
+
         let out:TrainingDataBatch = [];
         
         for (let i = 0; i < parseInt(args.batchSize); i++) {
@@ -639,8 +678,9 @@ function TRAIN_MNIST() {
     let prev_saved_err = 0;
     
     while (true) {
-        let batch = get_nth_databatch(batchN);
+        let batch = get_nth_databatch(batchN, args.useSampleData == 'true');
         newnet = train_net(newnet, batch);
+        err = parseFloat((newnet.training_metadata as any).rms_error);
         if (batchN % parseInt(args.saveEveryNth) == 0) {
             calc_net(newnet, batch[nth_save % batch.length].inputLayer, true);
 
@@ -659,7 +699,7 @@ function TRAIN_MNIST() {
             nth_save++;
             console.log(log);
         }
-        if (err < parseInt(args.untilRMSError)) { break; }
+        if (err < parseFloat(args.untilRMSError)) { break; }
         batchN++;
     }
 
@@ -673,6 +713,14 @@ function TRAIN_MNIST() {
 }
 
 
+function log(t: "gradient", v:any) {
+    let out = "";
+    for (let l of v as NetGradient) {
+        for (let n of l) {
+//            console.log(n.biasPD.toFixed(10) + " " + n.nodePD.toFixed(10));
+        } 
+    }
+}
 
 TRAIN_MNIST();
 //TRAIN_TEST();
@@ -704,5 +752,5 @@ TRAIN_MNIST();
 
 
 /**
- We initialize weight with a normal distribution with mean 0 and variance std, and the ideal distribution of weight after relu should have slightly incremented mean layer by layer and variance close to 1. We can see the output is close to what we expected. The mean increment slowly and std is close to 1 in the feedforward phase. And such stability will avoid the vanishing gradient problem and exploding gradient problem in the backpropagation phase.
+ We1initialize weight with a normal distribution with mean 0 and variance std, and the ideal distribution of weight after relu should have slightly incremented mean layer by layer and variance close to 1. We can see the output is close to what we expected. The mean increment slowly and std is close to 1 in the feedforward phase. And such stability will avoid the vanishing gradient problem and exploding gradient problem in the backpropagation phase.
 **/
