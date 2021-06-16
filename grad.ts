@@ -287,9 +287,7 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                     // * value of current node
                     // * PD of destination node
                     
-                    let nodePDSum = 0;
                     let nextLayerNodes = isolated_net.layers[currentLayerN + 1].nodes;
-
                     let nextLayerNodeN = 0;
                     // TODO optimize
                     while(nextLayerNodeN < nextLayerNodes.length) {
@@ -569,6 +567,11 @@ function TRAIN_TEST() {
     console.log("TOTAL TIME:     "+total_time);
 }
 
+
+
+
+
+
 function TRAIN_MNIST() {
 
     // Timer Start
@@ -580,7 +583,10 @@ function TRAIN_MNIST() {
     let args = getArgs();
     
     let newnet = new_net({
-        activation_fn: relu,
+        activation_fn: (i, pos, npl) => {
+            
+            return relu(i / (npl[pos.lN])); // wat last layer has no val
+        },
         derivative_activation_fn: derivative_relu,
         nodes_per_layer:  [784, 32, 10],
         init_fn: (i:ParameterInitialzerInputs)=>{ 
