@@ -312,7 +312,7 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         // A partial component of this link's weight PD
                         // how useful it would be to change this link's weight 
                         let weightPD_comp = nn_dv_avfn * nextNodePD * myNodeValu;
-                        net_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += cp( weightPD_comp )
+                        net_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += ( weightPD_comp )
 
                         // how useful it would be to change the OUTPUT of this node
                         node_grad.nodePD += ( nn_dv_avfn * nextNodePD * linkWeight )
