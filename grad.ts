@@ -234,16 +234,16 @@ function cp<T>(a:T):T {
 
 
 function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
-    t.TRIGGER("train_net")        
     let isolated_net:Net = get_net_copy(net);
+    t.TRIGGER("net copy");
 
     let calculated_grads: NetGradient[] = [];
     let sum_scalar_error = 0;
     let sum_avg_error = 0;
 
     for (let training_pair of training_data) {
+        t.TRIGGER("batch S");
         
-        t.TRIGGER("train_net A")        
         let net_grad: NetGradient = get_blank_gradient(isolated_net);
 
         // Calculate net fully 
@@ -269,16 +269,14 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         sum_scalar_error += local_scalar_error;
         sum_avg_error += local_avg_error;
 
-
-        t.TRIGGER("train_net B")        
+        t.TRIGGER("batch setup");
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
-            t.TRIGGER("train_net L2")
+            t.TRIGGER("backprop S");
             // For each node in layer, calc NodeGradient
 
             for (let nodeN = 0; nodeN < isolated_net.layers[currentLayerN].nodes.length; nodeN++) {
-
-                t.TRIGGER("train_net L3")
+                t.TRIGGER("layer S");
                 let node = isolated_net.layers[currentLayerN].nodes[nodeN];
                 let node_grad = net_grad[currentLayerN][nodeN];
 
@@ -296,27 +294,31 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                     while(nextLayerNodeN < nextLayerNodes.length) {
                         
                         // OUTPUT = after activation, INPUT = before
-                        
+                        t.TRIGGER("cp A");
+
                         // the OUTPUT of this node is multiplied by linkWeight before being added to INPUT of next node, among every other node in this layer
-                        let linkWeight = cp( nextLayerNodes[nextLayerNodeN].input_layer_weights[nodeN] )
+                        let linkWeight = ( nextLayerNodes[nextLayerNodeN].input_layer_weights[nodeN] )
                         // How useful it would be for the next node's OUTPUT to increase
-                        let nextNodePD = cp( net_grad[currentLayerN + 1][nextLayerNodeN].nodePD )
+                        let nextNodePD = ( net_grad[currentLayerN + 1][nextLayerNodeN].nodePD )
                         // this node's OUTPUT value. affects how much changing the weight of the link to next nodes will impact their INPUT
-                        let myNodeValu = cp( node.value )
+                        let myNodeValu = ( node.value )
                         // by how much the next node's OUTPUT will change if the INPUT is changed
-                        let nn_dv_avfn = cp( isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation, 
+                        let nn_dv_avfn = ( isolated_net.derivative_activation_fn( nextLayerNodes[nextLayerNodeN].value_before_activation, 
                                                                                    { lN: currentLayerN + 1, nN:nextLayerNodeN }, isolated_net.nodes_per_layer ) )
                         // The number of other nodes that will be added to the INPUT of next node (shouldnt need this)
                         // let numWeights = cp( nextLayerNodes[nextLayerNodeN].input_layer_weights.length )
 
+                        t.TRIGGER("cp B");
                         // A partial component of this link's weight PD
                         // how useful it would be to change this link's weight 
                         let weightPD_comp = nn_dv_avfn * nextNodePD * myNodeValu;
                         net_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += cp( weightPD_comp )
 
                         // how useful it would be to change the OUTPUT of this node
-                        node_grad.nodePD += cp( nn_dv_avfn * nextNodePD * linkWeight )
+                        node_grad.nodePD += ( nn_dv_avfn * nextNodePD * linkWeight )
                         nextLayerNodeN++;
+                        
+                        t.TRIGGER("cp C");
                     }
                                 
                 }
@@ -326,13 +328,13 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                 
                 // Calculate Bias Grad for each node in this layer
                 node_grad.biasPD = cp( node_grad.nodePD * my_dv_avfn);
-
-                t.TRIGGER("train_net L3 end")
+                t.TRIGGER("layer E");
             }
             currentLayerN--;
-            t.TRIGGER("train_net L2 end")        
+            t.TRIGGER("backprop E");
         }
         calculated_grads.push(net_grad);
+        t.TRIGGER("batch E");
     }
 
     let rms_error = sum_scalar_error / training_data.length;
@@ -348,7 +350,6 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         avg_error: avg_error
     } 
 
-    t.TRIGGER("train_net_end")        
     return applied_grad_net;
 
 }
@@ -525,6 +526,7 @@ function TRAIN_MNIST() {
 
     let args = getArgs();
     
+    t.TRIGGER("A");   
     let newnet = new_net({
         activation_fn: (i, pos, npl) => {
             return relu(i); // wat last layer has no val
@@ -543,8 +545,7 @@ function TRAIN_MNIST() {
         }
     });
     
-    t.TRIGGER("A");
-
+    
     if (args.startFrom) {
         let n:Net = JSON.parse(fs.readFileSync(args.startFrom).toString());
         for (let key in n) {
@@ -563,8 +564,8 @@ function TRAIN_MNIST() {
     save_net(newnet, "0");
 
 
+    t.TRIGGER("B");   
     function get_nth_databatch(n:number, useSample:boolean): TrainingDataBatch {
-        
         if (useSample) { return sample_training; }
 
         let out:TrainingDataBatch = [];
@@ -582,7 +583,6 @@ function TRAIN_MNIST() {
             outlayer[lbl_reader.next()] = 1;
             out.push({ inputLayer: img_reader.next(), outputLayer: outlayer });
         }
-
         return out;
     }
 
@@ -592,9 +592,15 @@ function TRAIN_MNIST() {
     let prev_saved_err = 0;
     
     while (true) {
-        t.TRIGGER("B")
+        t.TRIGGER("main A");
         let batch = get_nth_databatch(batchN, args.useSampleData == 'true');
+        t.TRIGGER("got data");
+
+        t.TRIGGER("train A");
         newnet = train_net(newnet, batch);
+        t.TRIGGER("train B");
+
+
         err = parseFloat((newnet.training_metadata as any).rms_error);
         if (batchN % parseInt(args.saveEveryNth) == 0) {
             calc_net(newnet, batch[nth_save % batch.length].inputLayer, true);
@@ -615,7 +621,9 @@ function TRAIN_MNIST() {
         }
         if (err < parseFloat(args.untilRMSError)) { break; }
         batchN++;
-        t.TRIGGER("C");
+        t.TRIGGER("main B");
+
+        t.printTriggerStructure();
     }
 
     let total_time = (new Date()).getTime() - t0;
@@ -674,19 +682,6 @@ function avg_arr_b(a:number[]):number {
 
 
 
-class OtherTimer {
-
-    
-
-    TRIGGER() {
-    
-    
-    }
-
-
-}
-
-
 
 type Trigger = {
     id: string
@@ -695,7 +690,13 @@ type Trigger = {
     avg_t_till_last_trigger: number,
     isBlockUptil: string,
 }
-
+/**
+ * Shoulda done this instead
+ * you can have triggers like now
+ * but between every TRANSITION you can have a unique time diff
+ * every time the Trig is called, the total time spent is saved
+ * easy to know proportions
+ */
 class Timer {
     
     constructor() {
@@ -790,14 +791,21 @@ class Timer {
     printTriggerStructure() {
         let stack:string[] = [];
         let out = "";
+        let last = "TIMER_INIT";
         for (let trigid of this.order_of_discovery) {
+            if (trigid == "TIMER_INIT") { continue; }
             let t = this.triggers[trigid];
             stack.push(t.isBlockUptil);
             if (stack[stack.length - 1] == t.id) { stack.pop(); }
+            let timeStr = "" + t.sum_t_till_last_trigger;
+            timeStr =  timeStr.padStart(10, " ");
+            out += timeStr;
+            out += "   " + t.avg_t_till_last_trigger.toPrecision(5).toString().padEnd(10, "0") + "  ";
             for (let s of stack) {
-                out+= "    -";
+                out+= "     ";
             }
-            out+= t.id + " till " + t.isBlockUptil + "\n";
+            out+= last.padEnd(10) + " > " + t.id + "\n";
+            last = t.id;
         }
         console.log(out);
     }
