@@ -307,7 +307,6 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
                         // A partial component of this link's weight PD
                         // how useful it would be to change this link's weight 
                         let weightPD_comp = nn_dv_avfn * nextNodePD * myNodeValu;
-                        net_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += ( weightPD_comp )
                         // Caclulate average on the fly by dividing by batch length
                         avg_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += ( weightPD_comp / training_data.length )
 
