@@ -294,7 +294,6 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                     while(nextLayerNodeN < nextLayerNodes.length) {
                         
                         // OUTPUT = after activation, INPUT = before
-                        t.TRIGGER("cp A");
 
                         // the OUTPUT of this node is multiplied by linkWeight before being added to INPUT of next node, among every other node in this layer
                         let linkWeight = ( nextLayerNodes[nextLayerNodeN].input_layer_weights[nodeN] )
@@ -308,7 +307,6 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         // The number of other nodes that will be added to the INPUT of next node (shouldnt need this)
                         // let numWeights = cp( nextLayerNodes[nextLayerNodeN].input_layer_weights.length )
 
-                        t.TRIGGER("cp B");
                         // A partial component of this link's weight PD
                         // how useful it would be to change this link's weight 
                         let weightPD_comp = nn_dv_avfn * nextNodePD * myNodeValu;
@@ -317,8 +315,8 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         // how useful it would be to change the OUTPUT of this node
                         node_grad.nodePD += ( nn_dv_avfn * nextNodePD * linkWeight )
                         nextLayerNodeN++;
-                        
-                        t.TRIGGER("cp C");
+
+
                     }
                                 
                 }
