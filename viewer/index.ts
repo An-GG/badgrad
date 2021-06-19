@@ -99,17 +99,15 @@ function drawImage(ops: {
     pos: { x: number, y: number, width: number },
     ctx: CanvasRenderingContext2D
 }) {
-
     let yPixels = ops.image.length / ops.xPixels;
-    let pixleWidth = ops.pos.width / ops.xPixels;
-
+    let pixleWidth = (ops.pos.width / ops.xPixels);
     for (let y = 0; y < yPixels; y++) {
         for (let x = 0; x < ops.xPixels; x++) {
             let n = ( y * ops.xPixels ) + x;
             let pos = {x: ops.pos.x + (pixleWidth * x), y: ops.pos.y + (pixleWidth * y)};
-
-            let w = ops.image[n];
-            ops.ctx.fillStyle = "rgb("+w+","+w+","+w+")";
+            let w = Math.round(255*ops.image[n]).toString(16).padStart(2, '0');
+            ops.ctx.strokeStyle = "#"+w+w+w;
+            ops.ctx.fillStyle = "#"+w+w+w;
             ops.ctx.fillRect(pos.x, pos.y, pixleWidth, pixleWidth);
         }
     }
@@ -272,7 +270,7 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
             }
 
             if (layerN == 0) {
-                firstLayerVals.push(node.value - node.bias);
+                firstLayerVals.push(node.value_before_activation - node.bias);
             }
             nodeN++;
         }
