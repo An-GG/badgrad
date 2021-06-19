@@ -234,7 +234,7 @@ function cp<T>(a:T):T {
 
 
 function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
-    
+    t.TRIGGER("train_net")        
     let isolated_net:Net = get_net_copy(net);
 
     let calculated_grads: NetGradient[] = [];
@@ -242,6 +242,8 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
     let sum_avg_error = 0;
 
     for (let training_pair of training_data) {
+        
+        t.TRIGGER("train_net A")        
         let net_grad: NetGradient = get_blank_gradient(isolated_net);
 
         // Calculate net fully 
@@ -266,12 +268,17 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         local_avg_error = local_avg_error / vector_error.length;
         sum_scalar_error += local_scalar_error;
         sum_avg_error += local_avg_error;
+
+
+        t.TRIGGER("train_net B")        
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
-            
+            t.TRIGGER("train_net L2")
             // For each node in layer, calc NodeGradient
 
             for (let nodeN = 0; nodeN < isolated_net.layers[currentLayerN].nodes.length; nodeN++) {
+
+                t.TRIGGER("train_net L3")
                 let node = isolated_net.layers[currentLayerN].nodes[nodeN];
                 let node_grad = net_grad[currentLayerN][nodeN];
 
@@ -311,7 +318,7 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         node_grad.nodePD += cp( nn_dv_avfn * nextNodePD * linkWeight )
                         nextLayerNodeN++;
                     }
-                
+                                
                 }
 
                 // by how much this node's OUTPUT will change if the INPUT is changed
@@ -320,8 +327,10 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                 // Calculate Bias Grad for each node in this layer
                 node_grad.biasPD = cp( node_grad.nodePD * my_dv_avfn);
 
+                t.TRIGGER("train_net L3 end")
             }
             currentLayerN--;
+            t.TRIGGER("train_net L2 end")        
         }
         calculated_grads.push(net_grad);
     }
@@ -338,7 +347,10 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         rms_error: rms_error,
         avg_error: avg_error
     } 
+
+    t.TRIGGER("train_net_end")        
     return applied_grad_net;
+
 }
 
 
@@ -497,96 +509,6 @@ let sample_training =  [
 
 
 
-function TRAIN_TEST() {
-   
-    if (fs.existsSync('temp_netfiles')) { fs.rmSync('temp_netfiles', { recursive: true }); }
-    if (fs.existsSync('viewer/netfile.json')) { fs.rmSync('viewer/netfile.json'); }
-
-    let args = getArgs();
-
-    let newnet = new_net({
-        activation_fn: relu,
-        derivative_activation_fn: derivative_relu,
-        nodes_per_layer:  [7, 4, 4, 3],
-        init_fn: (i:ParameterInitialzerInputs)=>{ 
-            if (i.paramType == 'NodeBias') {
-                return 0;   
-            } else {
-                let n_nodes = i.net.layers[0].nodes.length;
-                let kaimingInit = (Math.random())*Math.sqrt(2 / n_nodes);
-                
-                return kaimingInit;
-            }
-        }
-    });
-    
-    if (args.startFrom) {
-        let n:Net = JSON.parse(fs.readFileSync(args.startFrom).toString());
-        for (let key in n) {
-            (newnet as any)[key] = (n as any)[key];
-        }
-    }      
-
-
-    let training = [
-            {
-                inputLayer: [1,0,0,0,0,0,0],
-                outputLayer: [0,1,0]
-            },
-            {
-                inputLayer: [0,0,0,0,0,0,5],
-               outputLayer: [2,0,0]
-            },
-            {
-                inputLayer: [0,2,0,0,0,0,0],
-               outputLayer: [3,0,1]
-            },
-            {
-                inputLayer: [0,0,0,0,0,0,2],
-               outputLayer: [0,1,6]
-            },
-    ];
-
-    calc_net(newnet, training[0].inputLayer, true);
-    save_net(newnet, "0");
-    
-    let netfile:Netfile = { iterations: {} };
-    let err = 0;
-    let n = 0;
-    let t0 = (new Date()).getTime();
-    let nth_save = 0;
-    let prev_err = 0;
-
-
-    while (true) {
-        newnet = train_net(newnet, training);
-        err = parseFloat((newnet.training_metadata as any).rms_error);
-        if (n % parseInt(args.saveEveryNth) == 0) {
-            calc_net(newnet, training[nth_save % training.length].inputLayer, true);
-            
-            console.log(n.toString().padStart(10, "0")+"   "+
-                        (newnet.training_metadata as any).rms_error.toString().padEnd(24, "0")+"    "+
-                        Math.abs(prev_err -  err).toString().padEnd(24, "0")+" "+
-                        (Math.sign(prev_err - err) == 1 ? '+' : '-') 
-            );
-
-            save_net(newnet, (n+1).toString());
-            prev_err = JSON.parse(JSON.stringify(err));
-            nth_save++;
-        }
-        if (err < 0.001) {
-            break;
-        }
-        n++;    
-    }
-    let total_time = (new Date()).getTime() - t0;
-
-    console.log(":::::MARK:::::"); 
-    console.log("LAST ITERATION: "+n);
-    console.log("FINAL ERROR:    "+err);
-    console.log("TOTAL TIME:     "+total_time);
-}
-
 
 
 
@@ -596,6 +518,7 @@ function TRAIN_MNIST() {
 
     // Timer Start
     let t0 = (new Date()).getTime();
+    
 
     if (fs.existsSync('temp_netfiles')) { fs.rmSync('temp_netfiles', { recursive: true }); }
     if (fs.existsSync('viewer/netfile.json')) { fs.rmSync('viewer/netfile.json'); }
@@ -620,6 +543,8 @@ function TRAIN_MNIST() {
         }
     });
     
+    t.TRIGGER("A");
+
     if (args.startFrom) {
         let n:Net = JSON.parse(fs.readFileSync(args.startFrom).toString());
         for (let key in n) {
@@ -667,6 +592,7 @@ function TRAIN_MNIST() {
     let prev_saved_err = 0;
     
     while (true) {
+        t.TRIGGER("B")
         let batch = get_nth_databatch(batchN, args.useSampleData == 'true');
         newnet = train_net(newnet, batch);
         err = parseFloat((newnet.training_metadata as any).rms_error);
@@ -689,6 +615,7 @@ function TRAIN_MNIST() {
         }
         if (err < parseFloat(args.untilRMSError)) { break; }
         batchN++;
+        t.TRIGGER("C");
     }
 
     let total_time = (new Date()).getTime() - t0;
@@ -698,6 +625,7 @@ function TRAIN_MNIST() {
     console.log("FINAL ERROR:    "+err);
     console.log("TOTAL TIME:     "+total_time);
 
+    t.printTriggerStructure();    
 }
 
 
@@ -710,44 +638,187 @@ function log(t: "gradient", v:any) {
     }
 }
 
-let laps = [] as {n:string, d:Date}[];
-let lapdiffs:number[] = [0];
-let tn = 0;
-function t(i:string|number) {
-    laps.push({n:""+i, d:new Date()});
-    tn++;
-}
-function tlog() {
-    let ln = 0;
-    let dp = 0;
-    let dn = "";
-    for (let l of laps) {
-        if (ln == 0) { 
-            dp=l.d.getTime(); 
-            dn=l.n;
-            ln++; 
-            continue; 
-        }
-        let same = dn == laps[ln].n;
-        let lapn = same ? ln - 2 : ln - 1;
-        console.log(laps[lapn].n+"-"+l.n+"  "+(l.d.getTime() - dp));
-        
-        if (lapdiffs.length - 1 < ln) { lapdiffs.push(0); }
-        lapdiffs[ln]+=l.d.getTime()-dp;
-        
-        dp=l.d.getTime();
-        dn=l.n;
 
-        ln++;
+function avg_arr_b(a:number[]):number {
+    let s = 0;
+    for (let n of a) { s+=n; }
+    return (s / a.length); 
+}
+
+
+
+
+/**
+ * 
+ * The idea is every time we call the same trigger, we know that we've been in a block
+ * 
+ * T1
+ * {
+ *     T2
+ *     T3
+ *     ---- we dont capture anything after this line (but we do bc it loops back to T2)
+ * }
+ * T4
+ * T5
+ *
+ * When T2 is called again, we can assume T2->T3 is a block. Also, T3 
+ * may not be called in some cases. T4 may not either (this can be inside
+ * other blocks) We can just not worry abt this by not calcing on the fly. 
+ * 
+ * ASSUMPTIONS
+ * 
+ * 1. The beginning and end of every loop closure that has a trigger, must also have a trigger
+ * right before }.
+ *
+ **/
+
+
+
+class OtherTimer {
+
+    
+
+    TRIGGER() {
+    
+    
     }
-    console.log(lapdiffs);
 
-    ln = 0;
-    laps = [];
+
 }
 
+
+
+type Trigger = {
+    id: string
+    sum_t_till_last_trigger: number,
+    n_calls: number,
+    avg_t_till_last_trigger: number,
+    isBlockUptil: string,
+}
+
+class Timer {
+    
+    constructor() {
+        this.epoch = (new Date()).getTime();
+        this.triggers["TIMER_INIT"] = {
+            id: "TIMER_INIT",
+            avg_t_till_last_trigger: 0,
+            isBlockUptil: "TIMER_INIT",
+            n_calls: 1,
+            sum_t_till_last_trigger: 0
+        };
+        this.last_trigger = this.triggers["TIMER_INIT"];
+    }
+
+    epoch: number;
+
+    triggers: {
+        // num in array corresponds to t since 0
+        [k:string]: Trigger
+    } = {};
+
+    order_of_discovery: string[] = ["TIMER_INIT"]
+
+    order_of_exec: string[] = ["TIMER_INIT"]
+
+    last_trigger_t: number = 0;
+    last_trigger: Trigger;
+    nth_trigger = 1;
+    current_exec_depth = 0;
+
+    TRIGGER(s:string) {
+        let t = (new Date()).getTime() - this.epoch;
+        if (!this.triggers[s]) { 
+            // Is undiscovered trigger
+            let last_order = this.order_of_discovery.indexOf(this.last_trigger.id);
+            this.order_of_discovery.splice(last_order + 1, 0, s);
+            this.triggers[s] = {
+                id: s,
+                isBlockUptil: s,
+                sum_t_till_last_trigger: 0,
+                n_calls: 0,
+                avg_t_till_last_trigger: 0,
+            }
+        }
+
+        let nth_trigger_byOOD = this.order_of_discovery.indexOf(s);
+        let last_by_OOD = this.order_of_discovery.indexOf(this.last_trigger.id);
+        let tr = this.triggers[s];
+
+
+        if (nth_trigger_byOOD <= last_by_OOD) {
+            // The current trigger is before the last trigger in the code
+            
+            // Bc there is a trig at end of every loop:
+            // - No trigger after this can claim to be the earliest part of loop
+
+            let trign = 0;
+            for (let trigid of this.order_of_discovery) {
+                if (trign < nth_trigger_byOOD) {
+                    if (this.triggers[trigid].isBlockUptil == this.last_trigger.id) {
+                        // Some trigger before this already is earliest loop start
+                        // We are assuming trigs are present at the start of every loop
+                        this.triggers[trigid].isBlockUptil = trigid;
+                    }
+                }
+                if (trign == nth_trigger_byOOD) {
+                    // If the current trigger already has an end, if that end is 
+                    // after the prev trigger, ignore (prob continue or smth)
+                    let n_current_block_end = this.order_of_discovery.indexOf(tr.isBlockUptil);
+                    if (n_current_block_end > last_by_OOD) {
+                        break;
+                    } else {
+                        this.triggers[trigid].isBlockUptil = this.last_trigger.id;
+                    }
+                }
+                trign++;
+            }
+        }
+
+        tr.sum_t_till_last_trigger += (t - this.last_trigger_t);
+        tr.n_calls += 1;
+        tr.avg_t_till_last_trigger = tr.sum_t_till_last_trigger / tr.n_calls;
+        
+        this.last_trigger = tr;
+        this.last_trigger_t = t; 
+        this.nth_trigger++;
+    }
+
+    
+
+
+    printTriggerStructure() {
+        let stack:string[] = [];
+        let out = "";
+        for (let trigid of this.order_of_discovery) {
+            let t = this.triggers[trigid];
+            stack.push(t.isBlockUptil);
+            if (stack[stack.length - 1] == t.id) { stack.pop(); }
+            for (let s of stack) {
+                out+= "    -";
+            }
+            out+= t.id + " till " + t.isBlockUptil + "\n";
+        }
+        console.log(out);
+    }
+
+
+    // Each trigger should be thought to measure 
+    // the time until next trigger 
+    
+}
+
+
+
+
+
+
+
+
+
+
+let t = new Timer();
 TRAIN_MNIST();
-//TRAIN_TEST();
 // TODO Output can currently only be positive due to relu, 
 //
 //  - you could normalize the training data & make negatives positive, and then make the values which are supposed to be negative
