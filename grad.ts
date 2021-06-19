@@ -3,6 +3,7 @@ import * as readline from "readline";
 import { SIGWINCH } from "constants";
 import fs from 'fs';
 import { MnistReader } from "./interface";
+import { abort } from "process";
 
 export type Node = {
     value_before_activation: number
@@ -245,7 +246,7 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
     for (let training_pair of training_data) {
         
         let net_grad: NetGradient = get_blank_gradient(isolated_net);
-
+        let thisLayerPDs: number[] = [];
         // Calculate net fully 
         calc_net(isolated_net, training_pair.inputLayer, true);
         let vector_error = [];
@@ -263,6 +264,7 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
             local_scalar_error += diff * diff;
             local_avg_error += Math.abs(diff);
             net_grad[currentLayerN][nodeN].nodePD = 2 * diff;
+            thisLayerPDs.push(2 * diff);
         }
         local_scalar_error = Math.sqrt(local_scalar_error);
         local_avg_error = local_avg_error / vector_error.length;
@@ -270,13 +272,12 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
         sum_avg_error += local_avg_error;
 
         // Now, we can use PD to calculate previous layer PDs recursively
+        let nextLayerPDs: number[] = [];
         while (currentLayerN >= 0) {
             // For each node in layer, calc NodeGradient
-
             for (let nodeN = 0; nodeN < isolated_net.layers[currentLayerN].nodes.length; nodeN++) {
                 let node = isolated_net.layers[currentLayerN].nodes[nodeN];
                 let node_grad = net_grad[currentLayerN][nodeN];
-
                 // For final layer, PD is already defined
                 if (currentLayerN < isolated_net.layers.length - 1) {
                     // To calculate PD, need to average this EQ across all nodes for which this node in an input, 
@@ -312,6 +313,7 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
 
                         // how useful it would be to change the OUTPUT of this node
                         node_grad.nodePD += ( nn_dv_avfn * nextNodePD * linkWeight )
+                        thisLayerPDs[nodeN] += ( nn_dv_avfn * nextNodePD * linkWeight )
                         avg_grad[currentLayerN][nodeN].nodePD += ( nn_dv_avfn * nextNodePD * linkWeight ) / training_data.length;
                         nextLayerNodeN++;
 
@@ -324,9 +326,12 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
                 let my_dv_avfn = ( isolated_net.derivative_activation_fn( node.value_before_activation, { lN: currentLayerN, nN:nodeN }, isolated_net.nodes_per_layer ) )
                 
                 // Calculate Bias Grad for each node in this layer
-                node_grad.biasPD = ( node_grad.nodePD * my_dv_avfn ) ;
-                avg_grad[currentLayerN][nodeN].biasPD += ( node_grad.nodePD * my_dv_avfn ) / training_data.length;
+                node_grad.biasPD = ( node_grad.biasPD * my_dv_avfn ) ;
+                avg_grad[currentLayerN][nodeN].biasPD += ( node_grad.biasPD * my_dv_avfn ) / training_data.length;
             }
+            nextLayerPDs = thisLayerPDs;
+            thisLayerPDs = new Array( isolated_net.nodes_per_layer[currentLayerN-1] );
+            thisLayerPDs.fill(0);
             currentLayerN--;
         }
         calculated_grads.push(net_grad);
