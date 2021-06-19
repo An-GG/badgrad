@@ -413,17 +413,30 @@ function maxIndex(arr:number[]):number {
         return ind;
 }
 
+function rand_str(length:number):string {
+    var result           = '';
+    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var charactersLength = characters.length;
+    for ( var i = 0; i < length; i++ ) {
+      result += characters.charAt(Math.floor(Math.random() * 
+ charactersLength));
+   }
+   return result;
+}
+
+
 
 let args_obj = {
     startFrom: (false as string | false),
     saveEveryNth: ("32" as string),
     learnRate: ("0.01" as string),
     untilRMSError: ("0.001" as string),
-    batchSize: ("50" as string),
+    batchSize: ("64" as string),
     batchOrder: ("sequential (choose 'random' or 'sequential')" as 'random' | 'sequential'),
     useSampleData: (false as string | false),
     printTimings: (false as string | false),
-    initfn: ("normal_init" as string)
+    initfn: ("normal_init" as string),
+    seed: ("(random by default)" as string)
 
 } as const;
 
@@ -439,7 +452,7 @@ export type DeepWritable<T> = { -readonly [P in keyof T]: DeepWritable<T[P]> };
 
 function getArgs(): TrainingArgs {
     let out:DeepWritable<TrainingArgs> = JSON.parse(JSON.stringify(args_obj));
-
+    out.seed = rand_str(10);
 
     for (let a of process.argv.splice(2)) {
         // Verify correctness
@@ -518,17 +531,69 @@ let sample_training =  [
 
 
 
+function avg_arr_b(a:number[]):number {
+    let s = 0;
+    for (let n of a) { s+=n; }
+    return (s / a.length); 
+}
 
 
+
+
+class SeededRandom {
+
+    private rand:()=>number;
+
+    constructor(s:string) {
+        let seedgen = this.xmur3(s);
+        this.rand = this.sfc32(seedgen(), seedgen(), seedgen(), seedgen())
+    }
+
+    public next():number {
+        return this.rand();    
+    }
+
+
+    /**
+     * Methods unverified 
+     */
+    private xmur3(str:string):()=>number {
+        for(var i = 0, h = 1779033703 ^ str.length; i < str.length; i++)
+        h = Math.imul(h ^ str.charCodeAt(i), 3432918353),
+            h = h << 13 | h >>> 19;
+        return function() {
+            h = Math.imul(h ^ h >>> 16, 2246822507);
+            h = Math.imul(h ^ h >>> 13, 3266489909);
+            return (h ^= h >>> 16) >>> 0;
+        }
+    }
+
+    private sfc32(a:number, b:number, c:number, d:number): ()=>number {
+        return function() {
+            a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+            var t = (a + b) | 0;
+            a = b ^ b >>> 9;
+            b = c + (c << 3) | 0;
+            c = (c << 21 | c >>> 11);
+            d = d + 1 | 0;
+            t = t + d | 0;
+            c = c + t | 0;
+            return (t >>> 0) / 4294967296;
+        }
+    }
+}
+
+
+
+let RNG: SeededRandom 
 let INIT_FN: { [k:string]:(i:ParameterInitialzerInputs)=>number } = {
     "normal_init": (i:ParameterInitialzerInputs)=>{ 
         if (i.paramType == 'NodeBias') {
             return 0;   
         } else {
             if (i.layerN < 1) { return 0; } else {
-                return (Math.random() * 2); 
-                let v =  2 / (Math.sqrt(i.net.nodes_per_layer[i.layerN - 1] * i.net.nodes_per_layer[i.layerN]));
-                return (Math.random() - 0.5) * v;
+                let v = (RNG.next() * 2);
+                return (v * 1) / i.net.nodes_per_layer[i.layerN - 1];
             }
         }
     },
@@ -538,10 +603,10 @@ let INIT_FN: { [k:string]:(i:ParameterInitialzerInputs)=>number } = {
         } else {
             if (i.layerN < 1) { return 0; } else {
                 let v =  2 / (Math.sqrt(i.net.nodes_per_layer[i.layerN - 1] * i.net.nodes_per_layer[i.layerN]));
-                return (Math.random() - 0.5) * v;
+                return (RNG.next()) * v;
             }
         }
-    }
+    },
 }
 
 
@@ -556,13 +621,17 @@ function TRAIN_MNIST() {
 
     let args = getArgs();
 
+    RNG = new SeededRandom(args.seed);
+
+
+
     t.TRIGGER("A");   
     let newnet = new_net({
         activation_fn: (i, pos, npl) => {
             return relu(i); // wat last layer has no val
         },
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 64, 32, 10],
+        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 32, 10],
         init_fn: INIT_FN[args.initfn] 
     });
 
@@ -594,10 +663,14 @@ function TRAIN_MNIST() {
         for (let i = 0; i < parseInt(args.batchSize); i++) {
             let pos:number;
             if (args.batchOrder == 'sequential') {
-                pos = n * parseInt(args.batchSize);
+                pos = n * parseInt(args.batchSize) + i;
             } else {
                 pos = Math.random() * (lbl_reader.length - 1);
             }
+
+            //rollover
+            pos = pos % img_reader.length;
+
             img_reader.setHeadPosition(pos);
             lbl_reader.setHeadPosition(pos);
             let outlayer = [0,0,0,0,0,0,0,0,0,0];
@@ -606,6 +679,7 @@ function TRAIN_MNIST() {
         }
         return out;
     }
+
 
     let batchN = 0;
     let nth_save = 0;
@@ -632,7 +706,9 @@ function TRAIN_MNIST() {
                 "    " +
                 Math.abs(prev_saved_err - err).toString().padEnd(24, "0") +
                 "    " +
-                (Math.sign(prev_saved_err - err) == 1 ? '+' : '-')
+                (Math.sign(prev_saved_err - err) == 1 ? '+' : '-') +
+                "    " +
+                (args.seed)
             ;
             //calc_net(newnet, all1s, true);
             save_net(newnet, (batchN + 1).toString());
@@ -659,11 +735,7 @@ function TRAIN_MNIST() {
     t.printTriggerStructure();    
 }
 
-function avg_arr_b(a:number[]):number {
-    let s = 0;
-    for (let n of a) { s+=n; }
-    return (s / a.length); 
-}
+
 
 
 
