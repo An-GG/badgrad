@@ -137,9 +137,8 @@ function calc_net(net:Net, input:LayerValues, modifyOriginal?:boolean):number[] 
     return get_net_layer_vals(isolated_net, isolated_net.layers.length - 1);
 }
 
-function apply_gradient(net:Net, grad:NetGradient, learnRate:number):Net {
-    let isolated_net = get_net_copy(net);
-    
+function apply_gradient(in_net:Net, grad:NetGradient, learnRate:number, modifyOriginal?:boolean):Net {
+    let isolated_net = get_net_copy(in_net);
     let ln = 0;
     for (let layer of isolated_net.layers) {
         let nn = 0;
@@ -233,16 +232,17 @@ function cp<T>(a:T):T {
 
 
 
-function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
-    let isolated_net:Net = get_net_copy(net);
-    t.TRIGGER("net copy");
+function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
+    t.TRIGGER("TRAIN START");
+    let isolated_net:Net = (in_net);
 
     let calculated_grads: NetGradient[] = [];
+    let avg_grad = get_blank_gradient(isolated_net);
     let sum_scalar_error = 0;
     let sum_avg_error = 0;
 
+    t.TRIGGER("LOOPS");
     for (let training_pair of training_data) {
-        t.TRIGGER("batch S");
         
         let net_grad: NetGradient = get_blank_gradient(isolated_net);
 
@@ -250,10 +250,10 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         calc_net(isolated_net, training_pair.inputLayer, true);
         let vector_error = [];
         for (let nodeN = 0; nodeN < training_pair.outputLayer.length; nodeN++) {
-            vector_error.push( training_pair.outputLayer[nodeN] - isolated_net.layers[net.layers.length - 1].nodes[nodeN].value );
+            vector_error.push( training_pair.outputLayer[nodeN] - isolated_net.layers[isolated_net.layers.length - 1].nodes[nodeN].value );
         }
         // Start at last layer and get loss (PD) for each node in last layer
-        let currentLayerN = net.layers.length - 1;        
+        let currentLayerN = isolated_net.layers.length - 1;        
 
         // For final layer, PD is 2 * (difference)
         let local_scalar_error = 0;
@@ -269,19 +269,16 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
         sum_scalar_error += local_scalar_error;
         sum_avg_error += local_avg_error;
 
-        t.TRIGGER("batch setup");
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
-            t.TRIGGER("backprop S");
             // For each node in layer, calc NodeGradient
 
             for (let nodeN = 0; nodeN < isolated_net.layers[currentLayerN].nodes.length; nodeN++) {
-                t.TRIGGER("layer S");
                 let node = isolated_net.layers[currentLayerN].nodes[nodeN];
                 let node_grad = net_grad[currentLayerN][nodeN];
 
                 // For final layer, PD is already defined
-                if (currentLayerN < net.layers.length - 1) {
+                if (currentLayerN < isolated_net.layers.length - 1) {
                     // To calculate PD, need to average this EQ across all nodes for which this node in an input, 
                     // (Link_Weight / # Nodes in this Layer) 
                     // * derivative_activation( Value before activation of destination node ) 
@@ -311,9 +308,12 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                         // how useful it would be to change this link's weight 
                         let weightPD_comp = nn_dv_avfn * nextNodePD * myNodeValu;
                         net_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += ( weightPD_comp )
+                        // Caclulate average on the fly by dividing by batch length
+                        avg_grad[currentLayerN + 1][nextLayerNodeN].weightsPD[nodeN] += ( weightPD_comp / training_data.length )
 
                         // how useful it would be to change the OUTPUT of this node
                         node_grad.nodePD += ( nn_dv_avfn * nextNodePD * linkWeight )
+                        avg_grad[currentLayerN][nodeN].nodePD += ( nn_dv_avfn * nextNodePD * linkWeight ) / training_data.length;
                         nextLayerNodeN++;
 
 
@@ -322,27 +322,30 @@ function train_net(net:Net, training_data: TrainingDataBatch):Net & { training_m
                 }
 
                 // by how much this node's OUTPUT will change if the INPUT is changed
-                let my_dv_avfn = cp( isolated_net.derivative_activation_fn( node.value_before_activation, { lN: currentLayerN, nN:nodeN }, isolated_net.nodes_per_layer ) )
+                let my_dv_avfn = ( isolated_net.derivative_activation_fn( node.value_before_activation, { lN: currentLayerN, nN:nodeN }, isolated_net.nodes_per_layer ) )
                 
                 // Calculate Bias Grad for each node in this layer
-                node_grad.biasPD = cp( node_grad.nodePD * my_dv_avfn);
-                t.TRIGGER("layer E");
+                node_grad.biasPD = ( node_grad.nodePD * my_dv_avfn ) ;
+                avg_grad[currentLayerN][nodeN].biasPD += ( node_grad.nodePD * my_dv_avfn ) / training_data.length;
             }
             currentLayerN--;
-            t.TRIGGER("backprop E");
         }
         calculated_grads.push(net_grad);
-        t.TRIGGER("batch E");
     }
-
+    t.TRIGGER("AFTER LOOP");
     let rms_error = sum_scalar_error / training_data.length;
     let avg_error = sum_avg_error / training_data.length;
-
+    
+    t.TRIGGER("b4 avg");
     let avg = average_grads(calculated_grads);
-    log("gradient", avg); 
+    t.TRIGGER("after avg");
     
     let learnRate = parseFloat(getArgs().learnRate);
-    let applied_grad_net = apply_gradient(net, avg, learnRate) as Net & { training_metadata:TrainingMetadata };    
+
+    t.TRIGGER("b4 apply");
+    // TODO: dont copy
+    let applied_grad_net = apply_gradient(in_net, avg, learnRate, true) as Net & { training_metadata:TrainingMetadata };    
+    t.TRIGGER("after apply");
     applied_grad_net.training_metadata = {
         rms_error: rms_error,
         avg_error: avg_error
@@ -366,7 +369,7 @@ function save_net(net:Net, name:string, netfile?:Netfile) {
         fs.writeFileSync("viewer/netfile.json", JSON.stringify(netfile));
     } else {
         if (!fs.existsSync("temp_netfiles")) { fs.mkdirSync("temp_netfiles"); }
-        fs.writeFileSync("temp_netfiles/"+name+".json", JSON.stringify(net));
+        fs.writeFileSync("temp_netfiles/"+name+".json", JSON.stringify(net, null, 2));
     }
 }
 
@@ -612,7 +615,7 @@ function TRAIN_MNIST() {
                     "    " +
                     (Math.sign(prev_saved_err - err) == 1 ? '+' : '-')
                     ;
-
+            calc_net(newnet, all1s, true);
             save_net(newnet, (batchN + 1).toString());
             prev_saved_err = cp( err );
             nth_save++;
@@ -636,17 +639,6 @@ function TRAIN_MNIST() {
 
     t.printTriggerStructure();    
 }
-
-
-function log(t: "gradient", v:any) {
-    let out = "";
-    for (let l of v as NetGradient) {
-        for (let n of l) {
-//            console.log(n.biasPD.toFixed(10) + " " + n.nodePD.toFixed(10));
-        } 
-    }
-}
-
 
 function avg_arr_b(a:number[]):number {
     let s = 0;
