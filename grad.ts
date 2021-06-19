@@ -232,7 +232,7 @@ function cp<T>(a:T):T {
 
 
 
-function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { training_metadata:TrainingMetadata } {
+function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:number):Net & { training_metadata:TrainingMetadata } {
     t.TRIGGER("TRAIN START");
     let isolated_net:Net = (in_net);
 
@@ -339,11 +339,10 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
     let avg = avg_grad;//average_grads(calculated_grads);
     t.TRIGGER("after avg");
     
-    let learnRate = parseFloat(getArgs().learnRate);
 
     t.TRIGGER("b4 apply");
     // TODO: dont copy
-    let applied_grad_net = apply_gradient(in_net, avg, learnRate, true) as Net & { training_metadata:TrainingMetadata };    
+    let applied_grad_net = apply_gradient(in_net, avg, learn_rate, true) as Net & { training_metadata:TrainingMetadata };    
     t.TRIGGER("after apply");
     applied_grad_net.training_metadata = {
         rms_error: rms_error,
@@ -598,7 +597,7 @@ function TRAIN_MNIST() {
         t.TRIGGER("got data");
 
         t.TRIGGER("train A");
-        newnet = train_net(newnet, batch);
+        newnet = train_net(newnet, batch, parseFloat(args.learnRate));
         t.TRIGGER("train B");
 
 
