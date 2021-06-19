@@ -337,7 +337,7 @@ function train_net(in_net:Net, training_data: TrainingDataBatch):Net & { trainin
     let avg_error = sum_avg_error / training_data.length;
     
     t.TRIGGER("b4 avg");
-    let avg = average_grads(calculated_grads);
+    let avg = avg_grad;//average_grads(calculated_grads);
     t.TRIGGER("after avg");
     
     let learnRate = parseFloat(getArgs().learnRate);
