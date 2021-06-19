@@ -423,6 +423,7 @@ let args_obj = {
     batchSize: ("50" as string),
     batchOrder: ("sequential (choose 'random' or 'sequential')" as 'random' | 'sequential'),
     useSampleData: (false as string | false),
+    printTimings: (false as string | false)
 } as const;
 
 let supportedArgs = Object.keys(args_obj) as (keyof typeof args_obj)[];
@@ -532,7 +533,7 @@ function TRAIN_MNIST() {
             return relu(i); // wat last layer has no val
         },
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 32, 10],
+        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 64, 32, 10],
         init_fn: (i:ParameterInitialzerInputs)=>{ 
             if (i.paramType == 'NodeBias') {
                 return 0;   
@@ -618,12 +619,14 @@ function TRAIN_MNIST() {
             prev_saved_err = cp( err );
             nth_save++;
             console.log(log);
+            if (args.printTimings) {
+                t.printTriggerStructure();
+            }
         }
         if (err < parseFloat(args.untilRMSError)) { break; }
         batchN++;
         t.TRIGGER("main B");
 
-        t.printTriggerStructure();
     }
 
     let total_time = (new Date()).getTime() - t0;
