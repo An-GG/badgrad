@@ -402,6 +402,14 @@ function derivative_relu(x:number):0|1 {
     return 0;
 }
 
+function softmax(x:number):number {
+    return Math.log2(1+Math.pow(2, x));
+}
+function derivative_softmax(x:number):number {
+    return (1 / (1 + Math.pow(2, -x)));
+}
+
+
 function net_from_netfile(filename:string, cfg:FromNetfileConfig):Net {
     let layers:Layer[] = JSON.parse(fs.readFileSync("viewer/netfile"+filename+".json").toString());
     let nodenums = [];
