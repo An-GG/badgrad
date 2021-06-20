@@ -19,6 +19,8 @@ type Net = {
     training_metadata?: {
         avg_error: number
         rms_error: number
+        avg_loss: number,
+        avg_acc: number
     }
 }
 
@@ -296,6 +298,8 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
         if (!net.training_metadata) { return; }
         c.fillText("RMSERR: " + net.training_metadata.rms_error.toString(), 20, window.innerHeight - 75);
         c.fillText("AVGERR: " + net.training_metadata.avg_error.toString(), 20, window.innerHeight - 50);
+        c.fillText("AVGACC: " + net.training_metadata.avg_acc.toString(), 20, window.innerHeight - 125);
+        c.fillText("LOSS: " + net.training_metadata.avg_loss.toString(), 20, window.innerHeight - 155);
     }
 }
 
@@ -425,7 +429,7 @@ function reload_netfile() {
                 let graphbox:Rect = { pos: {x: 0, y: c.canvas.height - (graphsize.h + (c.canvas.height * 0.2))}, size:graphsize };
                 let plots:Plot[] = [];
                 let plot_colors = ['red', 'green', 'blue'];
-                let varnames = ['rms_error', 'avg_error'] as const;
+                let varnames = ['rms_error', 'avg_acc', 'avg_error'] as const;
                 
                 for (let net_nm in netfile.iterations) {
                     let md = netfile.iterations[net_nm].training_metadata;

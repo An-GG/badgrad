@@ -162,7 +162,9 @@ type TrainingDataBatch = { inputLayer: LayerValues, outputLayer: LayerValues }[]
 
 type TrainingMetadata = {
     rms_error: number,
-    avg_error: number
+    avg_error: number,
+    avg_loss: number,
+    avg_acc: number
 }
 
 type NodeGradient = {
@@ -240,18 +242,29 @@ function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:numb
     let avg_grad = get_blank_gradient(isolated_net);
     let sum_scalar_error = 0;
     let sum_avg_error = 0;
+    let sum_loss = 0;
+    let bat_accuracy = 0;
 
     t.TRIGGER("LOOPS");
     for (let training_pair of training_data) {
-
         let net_grad: NetGradient = get_blank_gradient(isolated_net);
 
         // Calculate net fully 
         calc_net(isolated_net, training_pair.inputLayer, true);
         let vector_error = [];
         for (let nodeN = 0; nodeN < training_pair.outputLayer.length; nodeN++) {
-            vector_error.push( training_pair.outputLayer[nodeN] - isolated_net.layers[isolated_net.layers.length - 1].nodes[nodeN].value );
+            let nodeval = isolated_net.layers[isolated_net.layers.length - 1].nodes[nodeN].value;
+            if (nodeval > 0) {
+                sum_loss -=  Math.log(nodeval) * training_pair.outputLayer[nodeN];
+            } else if (nodeval == 0 && training_pair.outputLayer[nodeN] > 0) {
+                sum_loss -=  Math.log(Number.MIN_VALUE) * training_pair.outputLayer[nodeN];
+            }
+            vector_error.push( training_pair.outputLayer[nodeN] - nodeval );
         }
+
+        let chosen = maxIndex(get_net_layer_vals(isolated_net, isolated_net.layers.length - 1));
+        let correct = maxIndex(training_pair.outputLayer);
+        if (chosen == correct) { bat_accuracy+=1 }
         // Start at last layer and get loss (PD) for each node in last layer
         let currentLayerN = isolated_net.layers.length - 1;        
 
@@ -264,11 +277,12 @@ function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:numb
             local_avg_error += Math.abs(diff);
             net_grad[currentLayerN][nodeN].nodePD = 2 * diff;
         }
+
         local_scalar_error = Math.sqrt(local_scalar_error);
         local_avg_error = local_avg_error / vector_error.length;
         sum_scalar_error += local_scalar_error;
         sum_avg_error += local_avg_error;
-
+        
         // Now, we can use PD to calculate previous layer PDs recursively
         while (currentLayerN >= 0) {
             // For each node in layer, calc NodeGradient
@@ -334,6 +348,8 @@ function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:numb
     t.TRIGGER("AFTER LOOP");
     let rms_error = sum_scalar_error / training_data.length;
     let avg_error = sum_avg_error / training_data.length;
+    let avg_loss = sum_loss / training_data.length;
+    let avg_acc = bat_accuracy / training_data.length;
 
     t.TRIGGER("b4 avg");
     let avg = avg_grad;//average_grads(calculated_grads);
@@ -346,7 +362,9 @@ function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:numb
     t.TRIGGER("after apply");
     applied_grad_net.training_metadata = {
         rms_error: rms_error,
-        avg_error: avg_error
+        avg_error: avg_error,
+        avg_loss: avg_loss,
+        avg_acc: avg_acc
     } 
 
     return applied_grad_net;
@@ -702,7 +720,11 @@ function TRAIN_MNIST() {
             let log = 
                 batchN.toString().padStart(10, "0") +
                 "    " +
+                (newnet.training_metadata as any).avg_loss.toString().padEnd(24, "0") +
+                "    " +
                 (newnet.training_metadata as any).rms_error.toString().padEnd(24, "0") +
+                "    " +
+                (newnet.training_metadata as any).avg_acc.toString().padEnd(24, "0") +
                 "    " +
                 Math.abs(prev_saved_err - err).toString().padEnd(24, "0") +
                 "    " +
