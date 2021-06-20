@@ -3,6 +3,17 @@ import * as readline from "readline";
 import { SIGWINCH } from "constants";
 import fs from 'fs';
 import { MnistReader } from "./interface";
+import child_process from 'child_process';
+import os from 'os';
+
+
+
+
+
+
+
+
+
 
 export type Node = {
     value_before_activation: number
@@ -234,7 +245,7 @@ function cp<T>(a:T):T {
 
 
 
-function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:number):Net & { training_metadata:TrainingMetadata } {
+function train_net(in_net:Net, training_data: TrainingDataBatch, learn_rate:number, t:Timer):Net & { training_metadata:TrainingMetadata } {
     t.TRIGGER("TRAIN START");
     let isolated_net:Net = (in_net);
 
@@ -462,7 +473,8 @@ let args_obj = {
     useSampleData: (false as string | false),
     printTimings: (false as string | false),
     initfn: ("normal_init" as string),
-    seed: ("(random by default)" as string)
+    seed: ("(random by default)" as string),
+    mutlicore: (false as string | false)
 
 } as const;
 
@@ -636,7 +648,7 @@ let INIT_FN: { [k:string]:(i:ParameterInitialzerInputs)=>number } = {
 }
 
 
-function TRAIN_MNIST() {
+function TRAIN_MNIST(t:Timer) {
 
     // Timer Start
     let t0 = (new Date()).getTime();
@@ -718,7 +730,7 @@ function TRAIN_MNIST() {
         t.TRIGGER("got data");
 
         t.TRIGGER("train A");
-        newnet = train_net(newnet, batch, parseFloat(args.learnRate));
+        newnet = train_net(newnet, batch, parseFloat(args.learnRate), t);
         t.TRIGGER("train B");
 
 
@@ -933,14 +945,52 @@ class Timer {
 
 
 
+/**
+ *
+ * Multicore done by running batches in cores and sending back the avg grads for parent to assemble
+ *
+ */
+function child_message_handler(c:child_process.ChildProcess, message:child_process.Serializable, n:number) {
+
+}
+
+
+
+function main() {
+    if (process.argv[2] === 'child') {
+        // Child
+        process.on("message", m => {
+        
+        });
+    } else {
+        // Parent controller    
+        let multi = process.argv.includes('--mutlicore=true');
+        
+        let executors: child_process.ChildProcess[] = [];
+        if (multi) {
+            for (let n=0; n<os.cpus().length; n++) {
+                let cp = child_process.fork(__filename, ['child']); 
+                cp.on("message", message => {
+                    child_message_handler(cp, message, n);
+                });
+                executors.push(cp);
+            }        
+        }
+
+        let t = new Timer();
+        TRAIN_MNIST(t);
+
+    }
+}
 
 
 
 
 
+main();
 
-let t = new Timer();
-TRAIN_MNIST();
+
+
 // TODO Output can currently only be positive due to relu, 
 //
 //  - you could normalize the training data & make negatives positive, and then make the values which are supposed to be negative
