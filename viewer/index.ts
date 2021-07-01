@@ -174,6 +174,7 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
         let maxbias = 1;
         let maxval = 1;
         for (let node of layer.nodes) {
+
             c.strokeStyle = "#ffffff";
             c.lineWidth = 3;
             
@@ -253,21 +254,23 @@ function drawNet_cb(c:CanvasRenderingContext2D, mode: "LINE_ONLY" | "NODE_ONLY")
 
                 let wN = 0;
                 let weightSpacing = (window.innerHeight) / (1 + node.input_layer_weights.length);
-                for (let w of node.input_layer_weights) {
-                    let prevpoint = (net.layers[layerN -1].nodes[wN] as any).point;
-                    c.beginPath();
+                if (!(node.input_layer_weights.length > 256)) {
+                    for (let w of node.input_layer_weights) {
+                        let prevpoint = (net.layers[layerN -1].nodes[wN] as any).point;
+                        c.beginPath();
 
-                    let weightval_rel = Math.round((w / maxweight) * 255);
-                    if (w > 0) {
-                        c.strokeStyle = "#0000ff";// "#0022"+weightval_rel.toString(16).padStart(2,"0");
-                    } else {
-                        c.strokeStyle = "#ff0000";//""#"+weightval_rel.toString(16).padStart(2,"0")+"2200";
+                        let weightval_rel = Math.round((w / maxweight) * 255);
+                        if (w > 0) {
+                            c.strokeStyle = "#0000ff";// "#0022"+weightval_rel.toString(16).padStart(2,"0");
+                        } else {
+                            c.strokeStyle = "#ff0000";//""#"+weightval_rel.toString(16).padStart(2,"0")+"2200";
+                        }
+                        c.lineWidth = Math.abs((sigmoid(w)) - 0.5) * point.size; 
+                        c.moveTo(point.x, point.y);
+                        c.lineTo(prevpoint.x, prevpoint.y);
+                        c.stroke();
+                        wN++;
                     }
-                    c.lineWidth = Math.abs((sigmoid(w)) - 0.5) * point.size; 
-                    c.moveTo(point.x, point.y);
-                    c.lineTo(prevpoint.x, prevpoint.y);
-                    c.stroke();
-                    wN++;
                 }
             }
 

@@ -657,7 +657,7 @@ function TRAIN_MNIST() {
             return relu(i); // wat last layer has no val
         },
         derivative_activation_fn: derivative_relu,
-        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 32, 10],
+        nodes_per_layer: args.useSampleData == 'true' ? [7,4,4,3] : [784, 128, 10],
         init_fn: INIT_FN[args.initfn] 
     });
 
