@@ -8,6 +8,8 @@ This is the most basic possible collection of code that can somehow qualify as a
 
 make mnist classifier using no libraries 
 
+!()[https://raw.githubusercontent.com/An-GG/badgrad/master/visual.gif]
+
 ### Stretch Goal
 
 do it in vanilla
