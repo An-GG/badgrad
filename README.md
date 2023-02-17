@@ -1,6 +1,6 @@
 # badgrad
 
-Like **micrograd** or **tinygrad**, but trash.
+Like [**micrograd**](https://github.com/karpathy/micrograd) or [**tinygrad**](https://github.com/geohot/tinygrad), but trash.
 
 This is the most basic possible collection of code that can somehow qualify as a NN framework.
 
