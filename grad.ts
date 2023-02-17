@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env ts-node
 import * as readline from "readline";
 import { SIGWINCH } from "constants";
 import fs from 'fs';
@@ -21,8 +21,8 @@ export type Net = {
     layers: Layer[],
     nodes_per_layer: number[],
     activation_fn: (i:number, pos:{ lN:number, nN:number }, nodes_per_layer:number[]) => number,
-        derivative_activation_fn: (i:number, pos:{ lN:number, nN:number }, nodes_per_layer:number[]) => number,
-        training_metadata?:TrainingMetadata
+    derivative_activation_fn: (i:number, pos:{ lN:number, nN:number }, nodes_per_layer:number[]) => number, 
+    training_metadata?:TrainingMetadata
 }
 
 
