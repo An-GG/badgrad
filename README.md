@@ -54,3 +54,43 @@ lines multiply by bias
 
 This way, if one node has a diff of +0.3 but another -0.3, 
 
+cool to see it still works
+
+```
+npm install
+```
+
+then in one terminal window 1
+```
+npx ts-node grad.ts
+```
+
+then to monitor progress,
+
+
+other terminal window (2):
+```
+cd viewer
+npx tsc -w
+```
+
+window (3)
+```
+cd viewer
+npx http-server
+```
+
+
+---
+
+to get a progress update:
+
+
+window (4)
+```
+npx ts-node compositifiy_netfiles.ts && open viewer/index.html
+```
+& hit the play button <br><br>
+
+i ran it for a bit on a m2 macbook air and saved the progress report from temp_netfiles in the next commit
+
