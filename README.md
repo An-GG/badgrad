@@ -57,6 +57,9 @@ This way, if one node has a diff of +0.3 but another -0.3,
 cool to see it still works
 
 ```
+# git foolproof thing to clone all submodules recursively
+git submodule update --init --recursive
+
 npm install
 ```
 
@@ -88,9 +91,9 @@ to get a progress update:
 
 window (4)
 ```
-npx ts-node compositifiy_netfiles.ts && open viewer/index.html
+npx ts-node compositifiy_netfiles.ts && open "http://localhost:8080/"
 ```
 & hit the play button <br><br>
 
-i ran it for a bit on a m2 macbook air and saved the progress report from temp_netfiles in the next commit
+i ran it for a bit on a m2 macbook air and saved the progress report from temp_netfiles in the [LFB](https://github.com/An-GG/LFB) folder on the 'm2-air-progress-report' branch as temp_netfiles.zip.d39eddebecd134708e9efcde7d10ce13652e0c63767a16753cc202b76585441e.parts 
 
