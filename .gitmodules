@@ -1,3 +1,6 @@
 [submodule "mnist"]
 	path = mnist
 	url = https://github.com/An-GG/mnist
+[submodule "LFB"]
+	path = LFB
+	url = https://github.com/angg-lf/d39eddebecd134708e9efcde7d10ce13652e0c63767a16753cc202b76585441e.git
